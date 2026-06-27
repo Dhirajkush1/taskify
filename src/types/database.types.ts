@@ -37,6 +37,7 @@ export interface Database {
           avatar_url?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       conversations: {
         Row: {
@@ -59,6 +60,7 @@ export interface Database {
           title?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       messages: {
         Row: {
@@ -84,6 +86,7 @@ export interface Database {
           metadata?: Json;
           source?: "web" | "telegram" | "whatsapp" | "discord";
         };
+        Relationships: [];
       };
       tasks: {
         Row: {
@@ -143,6 +146,7 @@ export interface Database {
           missing_information?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       subtasks: {
         Row: {
@@ -163,6 +167,7 @@ export interface Database {
           title?: string;
           is_completed?: boolean;
         };
+        Relationships: [];
       };
       activity_logs: {
         Row: {
@@ -184,6 +189,7 @@ export interface Database {
           created_at?: string;
         };
         Update: never;
+        Relationships: [];
       };
       settings: {
         Row: {
@@ -214,6 +220,7 @@ export interface Database {
           ai_personality?: "friendly_coach" | "strict_coach" | "minimal_assistant" | "student_mentor" | "professional_planner";
           updated_at?: string;
         };
+        Relationships: [];
       };
       user_memories: {
         Row: {
@@ -243,6 +250,7 @@ export interface Database {
           updated_at?: string;
           last_used_at?: string;
         };
+        Relationships: [];
       };
       goals: {
         Row: {
@@ -272,6 +280,7 @@ export interface Database {
           status?: "active" | "completed" | "paused" | "cancelled";
           updated_at?: string;
         };
+        Relationships: [];
       };
       milestones: {
         Row: {
@@ -302,6 +311,7 @@ export interface Database {
           status?: "todo" | "in_progress" | "done" | "cancelled";
           updated_at?: string;
         };
+        Relationships: [];
       };
       focus_sessions: {
         Row: {
@@ -331,6 +341,7 @@ export interface Database {
           status?: "active" | "paused" | "completed" | "cancelled";
           updated_at?: string;
         };
+        Relationships: [];
       };
       productivity_analytics_history: {
         Row: {
@@ -363,6 +374,7 @@ export interface Database {
           completion_probability_average?: number | null;
           details?: Json;
         };
+        Relationships: [];
       };
       reminders: {
         Row: {
@@ -398,6 +410,7 @@ export interface Database {
           status?: "pending" | "sent" | "cancelled";
           updated_at?: string;
         };
+        Relationships: [];
       };
       rescue_plans: {
         Row: {
@@ -445,6 +458,7 @@ export interface Database {
           activated_at?: string | null;
           updated_at?: string | null;
         };
+        Relationships: [];
       };
       daily_debriefs: {
         Row: {
@@ -489,6 +503,7 @@ export interface Database {
           best_achievement?: string | null;
           missed_opportunities?: Json;
         };
+        Relationships: [];
       };
       weekly_reflections: {
         Row: {
@@ -530,6 +545,7 @@ export interface Database {
           coaching_advice?: string | null;
           suggested_changes?: Json;
         };
+        Relationships: [];
       };
       telegram_accounts: {
         Row: {
@@ -566,6 +582,7 @@ export interface Database {
           is_active?: boolean;
           updated_at?: string;
         };
+        Relationships: [];
       };
       notification_preferences: {
         Row: {
@@ -599,6 +616,7 @@ export interface Database {
           focus_session_alerts_enabled?: boolean;
           updated_at?: string;
         };
+        Relationships: [];
       };
       telegram_notifications: {
         Row: {
@@ -628,6 +646,7 @@ export interface Database {
           body?: string;
           status?: string;
         };
+        Relationships: [];
       };
       execution_plans: {
         Row: {
@@ -651,6 +670,7 @@ export interface Database {
           plan_data?: Json;
           updated_at?: string;
         };
+        Relationships: [];
       };
       productivity_scores: {
         Row: {
@@ -674,6 +694,7 @@ export interface Database {
           calculated_date?: string;
           details?: Json;
         };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
