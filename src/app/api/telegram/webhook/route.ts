@@ -403,9 +403,9 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
       .from("messages")
       .insert({
         conversation_id: convo.id,
-        role: "user",
+        role: "user" as const,
         content: message.text || (message.voice ? "[Voice Note]" : "[Attachment]"),
-        source: "telegram"
+        source: "telegram" as const
       })
       .select()
       .single();
@@ -436,9 +436,9 @@ ${sim.suggested_alternative}
       // Save assistant response
       await supabaseAdmin.from("messages").insert({
         conversation_id: convo.id,
-        role: "assistant",
+        role: "assistant" as const,
         content: simResponse,
-        source: "telegram"
+        source: "telegram" as const
       });
 
       await TelegramBotService.sendMessage(chatId, simResponse);
@@ -485,9 +485,9 @@ ${sim.suggested_alternative}
     const replyText = parsedData.chat_response;
     await supabaseAdmin.from("messages").insert({
       conversation_id: convo.id,
-      role: "assistant",
+      role: "assistant" as const,
       content: replyText,
-      source: "telegram"
+      source: "telegram" as const
     });
 
     // If Rescue Mode was triggered during execution, notify!

@@ -95,7 +95,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
           task_id: selectedTaskId || null,
           duration_minutes: durationPreset,
           completed_minutes: durationPreset,
-          status: "completed",
+          status: "completed" as const,
         });
 
         // 2. If a task was selected, automatically update its progress/status
@@ -103,7 +103,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
           await supabase
             .from("tasks")
             .update({
-              status: "done",
+              status: "done" as const,
               completion_percentage: 100,
               updated_at: new Date().toISOString(),
             })

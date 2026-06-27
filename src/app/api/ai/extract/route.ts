@@ -101,12 +101,12 @@ export async function POST(request: NextRequest) {
             title: t.title,
             description: t.description || null,
             deadline: t.deadline || null,
-            priority: t.priority || "medium",
-            status: "todo",
+            priority: (t.priority || "medium") as "critical" | "high" | "medium" | "low",
+            status: "todo" as const,
             estimated_duration: t.estimated_duration || null,
             completion_percentage: 0,
             priority_score: t.priority_score || 0,
-            risk_level: t.risk_level || "low",
+            risk_level: (t.risk_level || "low") as "low" | "medium" | "high" | "critical",
             completion_probability: t.completion_probability ?? 100,
             dependencies: t.dependencies || [],
             missing_information: t.missing_information || null,
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
         await supabase.from("execution_plans").upsert(
           {
             user_id: user.id,
-            plan_type: "daily",
+            plan_type: "daily" as const,
             plan_data: aiOutput.execution_plan,
             updated_at: new Date().toISOString(),
           },
@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
           
           await supabase.from("execution_plans").insert({
             user_id: user.id,
-            plan_type: "daily",
+            plan_type: "daily" as const,
             plan_data: aiOutput.execution_plan,
           });
         } catch (err) {

@@ -73,9 +73,9 @@ export class ReminderService {
       task_id: payload.task_id || null,
       title: payload.title,
       reminder_time: resolvedTime.toISOString(),
-      reminder_type: payload.reminder_type || "specific_time",
+      reminder_type: (payload.reminder_type || "specific_time") as "specific_time" | "relative_time" | "recurring" | "deadline" | "smart",
       recurrence_pattern: payload.recurrence_pattern || null,
-      status: "pending",
+      status: "pending" as const,
     };
 
     const { data, error } = await supabase
@@ -117,7 +117,7 @@ export class ReminderService {
   static async cancelReminder(userId: string, reminderId: string, supabase: SupabaseClient<Database>) {
     const { data, error } = await supabase
       .from("reminders")
-      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .update({ status: "cancelled" as const, updated_at: new Date().toISOString() })
       .eq("id", reminderId)
       .eq("user_id", userId)
       .select()
@@ -190,7 +190,7 @@ export class ReminderService {
           // 2. Mark reminder as sent
           await supabase
             .from("reminders")
-            .update({ status: "sent", updated_at: new Date().toISOString() })
+            .update({ status: "sent" as const, updated_at: new Date().toISOString() })
             .eq("id", r.id);
 
         } catch (dispatchErr) {
