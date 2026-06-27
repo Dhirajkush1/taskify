@@ -43,7 +43,7 @@ export class ContextBuilder {
     ]);
 
     const activeTasks = tasks || [];
-    const activePlan = plan?.plan_data || null;
+    const activePlan = (plan?.plan_data as { today?: string[] } | null) || null;
     const personality = settingsRow?.ai_personality || "friendly_coach";
 
     // 1. Compile User Memories Section
@@ -58,7 +58,7 @@ export class ContextBuilder {
     if (activeTasks.length > 0) {
       tasksStr = "\nCURRENT UNFINISHED TASKS:\n" +
         activeTasks.map(t => 
-          `- Task: "${t.title}" | Priority Score: ${t.priority_score}% | Status: ${t.status} | Effort: ${t.estimated_duration || 30} mins | Deadline: ${t.deadline || "None"} | Risk: ${t.risk_level} | Dependencies: [${(t.dependencies || []).join(", ")}]`
+          `- Task: "${t.title}" | Priority Score: ${t.priority_score}% | Status: ${t.status} | Effort: ${t.estimated_duration || 30} mins | Deadline: ${t.deadline || "None"} | Risk: ${t.risk_level} | Dependencies: [${((t.dependencies as string[] | null) || []).join(", ")}]`
         ).join("\n") + "\n";
     } else {
       tasksStr = "\nNo current unfinished tasks in queue.\n";
