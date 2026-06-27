@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { runAutonomousGemini, runAutonomousGroq } from "@/lib/ai/ai-service";
+import { runAutonomousAI } from "@/lib/ai/ai-service";
 import { createClient } from "@/lib/supabase/server";
 
 interface ExtractRequestBody {
@@ -63,32 +63,26 @@ export async function POST(request: NextRequest) {
 
     let aiOutput;
 
-    if (provider === "groq") {
-      // Groq is text-only
-      if (file) {
-        return NextResponse.json(
-          { error: "Groq does not support file uploads. Please switch to Gemini to upload documents!" },
-          { status: 400 }
-        );
-      }
-      aiOutput = await runAutonomousGroq([
-        { role: "user", content: text || "Extract tasks from my request." },
-      ]);
-    } else {
-      // Gemini supports multimodal
-      const fileAttachment =
-        file && mimeType ? { base64Data: file, mimeType } : undefined;
-
-      aiOutput = await runAutonomousGemini(
-        [
-          {
-            role: "user",
-            parts: text ? [{ text }] : [],
-          },
-        ],
-        fileAttachment
+    if (provider === "groq" && file) {
+      return NextResponse.json(
+        { error: "Groq does not support file uploads. Please switch to Gemini to upload documents!" },
+        { status: 400 }
       );
     }
+
+    const fileAttachment =
+      file && mimeType ? { base64Data: file, mimeType } : undefined;
+
+    aiOutput = await runAutonomousAI(
+      [
+        {
+          role: "user",
+          content: text || "Extract tasks from my request.",
+        },
+      ],
+      provider,
+      fileAttachment
+    );
 
     // Perform database insertion of extracted tasks & chunked subtasks
     const insertedTasks = [];

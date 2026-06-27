@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+
 
 export interface TelegramKeyboardBtn {
   text: string;

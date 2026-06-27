@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient } from "./providers";
 
 export interface AIGeneratedTask {
   title: string;
@@ -20,18 +20,7 @@ export class GoalService {
     milestoneTitle: string,
     milestoneDescription?: string
   ): Promise<AIGeneratedTask[]> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("[GoalService] Missing GEMINI_API_KEY. Skipping task autogeneration.");
-      return [];
-    }
-
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json" },
-      });
 
       const systemInstruction = `
 You are Clutch AI's Goal Decomposer. Your task is to break down a high-level milestone into 3 to 5 highly actionable, granular, and specific tasks.
@@ -58,8 +47,18 @@ Milestone Description: "${milestoneDescription || ""}"
 Decompose this milestone into 3-5 clear tasks.
 `;
 
-      const result = await model.generateContent([systemInstruction, prompt]);
-      const tasks: AIGeneratedTask[] = JSON.parse(result.response.text());
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          systemPrompt: systemInstruction,
+          responseMimeType: "application/json"
+        }
+      );
+      const tasks: AIGeneratedTask[] = JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());
 
       if (tasks && tasks.length > 0) {
         const supabase = await createClient();
