@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 
   Bell, Brain, Moon, Shield, Loader2, Sparkles, 
@@ -12,7 +12,8 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
-  const supabase = createClient();
+  
+  const supabase = useMemo(() => createClient(), []);
 
   // Telegram Integration State
   const [telegramStatus, setTelegramStatus] = useState<{
@@ -51,7 +52,7 @@ export default function SettingsPage() {
   const [refreshingCode, setRefreshingCode] = useState(false);
 
   // Load standard settings & Telegram link status
-  async function loadTelegramStatus() {
+  const loadTelegramStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/telegram/link");
       if (res.ok) {
@@ -77,9 +78,10 @@ export default function SettingsPage() {
     } catch (err) {
       console.error("Failed to load Telegram link state:", err);
     }
-  }
+  }, []);
 
   useEffect(() => {
+    let channel: any;
     async function loadSettings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -96,7 +98,7 @@ export default function SettingsPage() {
         await loadTelegramStatus();
 
         // Subscribe to real-time changes on telegram_accounts to auto-detect handshake completion!
-        const channel = supabase
+        channel = supabase
           .channel("telegram-link-sync")
           .on(
             "postgres_changes",
@@ -126,15 +128,18 @@ export default function SettingsPage() {
             }
           )
           .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
       }
       setLoading(false);
     }
+    
     loadSettings();
-  }, []);
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [supabase, loadTelegramStatus]);
 
   const updateSetting = async (key: string, value: any) => {
     if (!settings) return;

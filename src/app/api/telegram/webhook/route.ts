@@ -8,11 +8,12 @@ import { AUTONOMOUS_SYSTEM_PROMPT } from "@/lib/ai/ai-service";
 import { RescueEngine } from "@/lib/ai/rescue-engine";
 import { DebriefEngine } from "@/lib/ai/debrief-engine";
 import { SimulationEngine } from "@/lib/ai/simulation-engine";
+import type { Database } from "@/types/database.types";
 
 export const runtime = "nodejs";
 
 // Instantiate Supabase Admin client with Service Role Key to execute background processes
-const supabaseAdmin = createClient(
+const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );

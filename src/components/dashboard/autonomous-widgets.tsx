@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain,
@@ -121,12 +121,7 @@ export function AutonomousWidgets({
 
   const pendingTasks = tasks.filter((t) => t.status !== "done");
 
-  // Load debrief on tab switch or mount
-  useEffect(() => {
-    fetchDebriefData();
-  }, [debriefTab]);
-
-  const fetchDebriefData = async (forceGenerate = false) => {
+  const fetchDebriefData = useCallback(async (forceGenerate = false) => {
     setIsLoadingDebrief(true);
     try {
       if (debriefTab === "daily") {
@@ -158,7 +153,12 @@ export function AutonomousWidgets({
     } finally {
       setIsLoadingDebrief(false);
     }
-  };
+  }, [debriefTab]);
+
+  // Load debrief on tab switch or mount
+  useEffect(() => {
+    fetchDebriefData();
+  }, [fetchDebriefData]);
 
   const handleSimulate = async (e: React.FormEvent) => {
     e.preventDefault();

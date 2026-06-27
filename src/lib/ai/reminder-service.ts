@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 
 export interface ReminderPayload {
   title: string;
@@ -55,7 +56,7 @@ export class ReminderService {
   static async createReminder(
     userId: string,
     payload: ReminderPayload,
-    supabase: SupabaseClient
+    supabase: SupabaseClient<Database>
   ) {
     let resolvedTime: Date;
     if (payload.reminder_time.includes("-") || payload.reminder_time.includes("T") || !isNaN(Date.parse(payload.reminder_time))) {
@@ -95,7 +96,7 @@ export class ReminderService {
   /**
    * Fetches all active/pending reminders for a user.
    */
-  static async getPendingReminders(userId: string, supabase: SupabaseClient) {
+  static async getPendingReminders(userId: string, supabase: SupabaseClient<Database>) {
     const { data, error } = await supabase
       .from("reminders")
       .select("*, task:tasks(title)")
@@ -113,7 +114,7 @@ export class ReminderService {
   /**
    * Cancels a pending reminder.
    */
-  static async cancelReminder(userId: string, reminderId: string, supabase: SupabaseClient) {
+  static async cancelReminder(userId: string, reminderId: string, supabase: SupabaseClient<Database>) {
     const { data, error } = await supabase
       .from("reminders")
       .update({ status: "cancelled", updated_at: new Date().toISOString() })
