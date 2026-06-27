@@ -120,7 +120,7 @@ export class ActionOrchestrator {
               const milestonePayload = g.milestones.map((mTitle) => ({
                 goal_id: goalData.id,
                 title: mTitle,
-                status: "todo",
+                status: "todo" as const,
               }));
 
               const { error: mileError } = await supabase
