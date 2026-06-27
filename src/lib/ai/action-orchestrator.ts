@@ -210,7 +210,7 @@ export class ActionOrchestrator {
             .eq("id", taskId)
             .single();
 
-          if (task && task.dependencies && task.dependencies.length > 0) {
+          if (task && Array.isArray(task.dependencies) && task.dependencies.length > 0) {
             const resolvedIds = (task.dependencies as string[])
               .map((depName) => taskMap.get(depName.toLowerCase()))
               .filter((id): id is string => !!id);
