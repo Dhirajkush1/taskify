@@ -78,6 +78,10 @@ Once connected, I will become your autonomous productivity companion, synchroniz
     }
 
     const userId = account.user_id;
+    if (!userId) {
+      await TelegramBotService.sendMessage(chatId, "⚠️ Your account is linked but has no associated user ID. Please re-link in Settings.");
+      return NextResponse.json({ ok: true });
+    }
 
     // 4. Process Quick System Commands
     if (text?.startsWith("/")) {
@@ -112,6 +116,14 @@ async function handleAccountLinking(chatId: number, telegramUserId: number, code
     await TelegramBotService.sendMessage(
       chatId,
       "⚠️ <b>Linking Code Invalid</b>\n\nThat linking code was not found. Please verify it or generate a new one from your Settings page."
+    );
+    return false;
+  }
+
+  if (!account.linking_code_expires_at) {
+    await TelegramBotService.sendMessage(
+      chatId,
+      "⚠️ <b>Linking Code Invalid</b>\n\nThat linking code has no expiry. Please generate a fresh code in Settings."
     );
     return false;
   }
@@ -194,8 +206,8 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
         .from("tasks")
         .select("*")
         .eq("user_id", userId)
-        .neq("status", "done")
-        .neq("status", "archived")
+        .neq("status", "done" as "done")
+        .neq("status", "archived" as "archived")
         .order("priority", { ascending: false });
 
       if (!tasks || tasks.length === 0) {
@@ -219,7 +231,7 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
         .from("tasks")
         .select("*")
         .eq("user_id", userId)
-        .neq("status", "done")
+        .neq("status", "done" as "done")
         .order("priority", { ascending: false });
 
       const todayTasks = tasks?.filter(t => t.deadline?.startsWith(todayStr)) || [];
@@ -264,14 +276,16 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
     }
 
     case "/rescue": {
-      const plan = await RescueEngine.assessAndSyncRescuePlan(userId, supabaseAdmin);
+      const plan = await RescueEngine.detectAndRunRescue(userId);
       if (plan && plan.is_active) {
+        const hoursRemaining = plan.hours_remaining ?? 0;
+        const firstStep = plan.emergency_action_plan[0]?.step || "Critical Work Block";
         await TelegramBotService.sendRescueAlert(chatId, {
-          hoursRemaining: (new Date(plan.target_deadline!).getTime() - Date.now()) / (1000 * 60 * 60),
-          recoveryProbability: plan.recovery_probability,
-          nextFocusBlock: plan.focus_sessions[0]?.title || "Critical Work Block",
-          focusSessionsRequired: plan.focus_sessions_required,
-          rescuePlanId: plan.id
+          hoursRemaining,
+          recoveryProbability: plan.recovery_probability ?? 0,
+          nextFocusBlock: firstStep,
+          focusSessionsRequired: plan.remaining_focus_sessions ?? 0,
+          rescuePlanId: userId
         });
       } else {
         await TelegramBotService.sendMessage(chatId, "🟢 <b>Schedule Stable:</b> No deadline emergency detected. Your schedules are perfectly balanced!");
@@ -280,14 +294,18 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
     }
 
     case "/debrief": {
-      const debrief = await DebriefEngine.generateDailyDebrief(userId, supabaseAdmin);
-      await TelegramBotService.sendDailyDebrief(chatId, {
-        completionRate: debrief.completion_rate,
-        focusMinutes: debrief.focus_minutes,
-        summary: debrief.coaching_summary,
-        priorities: debrief.tomorrow_priorities,
-        streak: debrief.streak_days
-      });
+      const debrief = await DebriefEngine.getOrCreateDailyDebrief(userId);
+      if (debrief) {
+        await TelegramBotService.sendDailyDebrief(chatId, {
+          completionRate: debrief.metrics.completion_rate,
+          focusMinutes: debrief.metrics.focus_time_minutes,
+          summary: debrief.summary,
+          priorities: debrief.tomorrow_priorities,
+          streak: debrief.metrics.current_streak
+        });
+      } else {
+        await TelegramBotService.sendMessage(chatId, "📊 <b>No debrief available yet.</b> Complete some tasks today to generate your daily summary!");
+      }
       return true;
     }
 
@@ -472,11 +490,14 @@ ${sim.suggested_alternative}
       .maybeSingle();
 
     if (rescuePlan && parsedData.chat_response.includes("Rescue Mode")) {
+      const targetDeadline = rescuePlan.estimated_finish_time
+        ? new Date(rescuePlan.estimated_finish_time).getTime()
+        : Date.now() + 60 * 60 * 1000;
       await TelegramBotService.sendRescueAlert(chatId, {
-        hoursRemaining: (new Date(rescuePlan.target_deadline).getTime() - Date.now()) / (1000 * 60 * 60),
-        recoveryProbability: rescuePlan.recovery_probability,
-        nextFocusBlock: rescuePlan.focus_sessions[0]?.title || "Focus Mission",
-        focusSessionsRequired: rescuePlan.focus_sessions_required,
+        hoursRemaining: (targetDeadline - Date.now()) / (1000 * 60 * 60),
+        recoveryProbability: rescuePlan.recovery_probability ?? 0,
+        nextFocusBlock: "Focus Mission",
+        focusSessionsRequired: rescuePlan.remaining_focus_sessions ?? 0,
         rescuePlanId: rescuePlan.id
       });
     } else {
@@ -512,6 +533,8 @@ async function handleCallbackQuery(callbackQuery: any) {
   }
 
   const userId = account.user_id;
+  if (!userId) return;
+
   const parts = data.split(":");
   const actionScope = parts[0]; // 'task' or 'rescue'
   const actionName = parts[1]; // 'complete', 'postpone', 'focus', etc.
@@ -538,7 +561,7 @@ async function handleCallbackQuery(callbackQuery: any) {
         });
 
         // Assess and update rescue plan if active
-        await RescueEngine.assessAndSyncRescuePlan(userId, supabaseAdmin);
+        await RescueEngine.updateRescueProgress(userId);
 
         await TelegramBotService.answerCallbackQuery(callbackQuery.id, "Task completed successfully!");
         await TelegramBotService.editMessageText(chatId, messageId, `✅ <b>Task Completed</b>\n\nYou marked this focus task as finished. Outstanding work!`);
