@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Sparkles, AlertCircle, ShieldAlert, Check, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -18,7 +18,7 @@ export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<SmartNotification[]>([]);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     async function loadNotifications() {
@@ -100,7 +100,7 @@ export function NotificationCenter() {
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [supabase]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

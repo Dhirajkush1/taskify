@@ -150,28 +150,33 @@ export async function POST(request: NextRequest) {
 
     // Save/Update the execution plan if returned
     if (aiOutput.execution_plan) {
-      await supabase.from("execution_plans").upsert(
-        {
-          user_id: user.id,
-          plan_type: "daily",
-          plan_data: aiOutput.execution_plan,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id, plan_type" }
-      ).catch(() => {
+      try {
+        await supabase.from("execution_plans").upsert(
+          {
+            user_id: user.id,
+            plan_type: "daily",
+            plan_data: aiOutput.execution_plan,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id, plan_type" }
+        );
+      } catch {
         // Fallback delete/insert
-        supabase
-          .from("execution_plans")
-          .delete()
-          .match({ user_id: user.id, plan_type: "daily" })
-          .then(() => {
-            supabase.from("execution_plans").insert({
-              user_id: user.id,
-              plan_type: "daily",
-              plan_data: aiOutput.execution_plan,
-            });
+        try {
+          await supabase
+            .from("execution_plans")
+            .delete()
+            .match({ user_id: user.id, plan_type: "daily" });
+          
+          await supabase.from("execution_plans").insert({
+            user_id: user.id,
+            plan_type: "daily",
+            plan_data: aiOutput.execution_plan,
           });
-      });
+        } catch (err) {
+          console.error("Failed to fallback insert execution plan:", err);
+        }
+      }
     }
 
     return NextResponse.json({
