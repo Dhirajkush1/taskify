@@ -110,6 +110,35 @@ export class DebriefEngine {
     const completionRate = totalToday > 0 ? Math.round((completedToday.length / totalToday) * 100) : 100;
 
     try {
+      const prompt = `You are Clutch AI's Daily Debrief Engine. Analyze the user's productivity data for today (${targetDateStr}) and generate a daily debrief report.
+
+User Memories / Context:
+${JSON.stringify(memoryMap, null, 2)}
+
+Today's Tasks:
+- Completed: ${JSON.stringify(completedToday.map((t) => t.title))}
+- Delayed: ${JSON.stringify(delayedToday.map((t) => t.title))}
+
+Today's Metrics:
+- Focus Session Minutes: ${focusMinutes}
+- Completion Rate: ${completionRate}%
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "summary": "concise daily recap of work, progress, and mindset",
+  "best_achievement": "single best win/achievement of the day",
+  "tomorrow_probability": 0-100 (integer, predicted probability of finishing tomorrow's scheduled goals),
+  "tomorrow_priorities": ["list of top 2-3 task priorities recommended for tomorrow"],
+  "improvements": ["constructive actions or adjustments to improve productivity tomorrow"],
+  "missed_opportunities": ["brief description of delayed tasks or missed momentum"],
+  "metrics": {
+    "productivity_score": 0-100 (integer, overall productivity score),
+    "current_streak": number (current streak of productive days)
+  }
+}
+
+Do not wrap the response in markdown formatting or include any other text. Output pure JSON.`;
+
       const responseText = await AIClient.generateText(
         [
           { role: "user" as const, content: prompt }
@@ -264,6 +293,29 @@ export class DebriefEngine {
 
     // Formulate weekly analytics using Gemini
     try {
+      const prompt = `You are Clutch AI's Weekly Reflection Engine. Analyze the user's weekly productivity history and generate a reflective report.
+
+Weekly Context (${startDateStr} to ${endDateStr}):
+- Focus Trends: ${JSON.stringify(focusTrends)}
+- Stress / Burnout Trends: ${JSON.stringify(burnoutTrend)}
+- Daily Metrics Log: ${JSON.stringify(historyLogs.map(h => ({ date: h.recorded_date, completion_probability_average: h.completion_probability_average, focus_time_minutes: h.focus_time_minutes, tasks_completed_count: h.tasks_completed_count })))}
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "reflection_text": "summary of the week's performance, consistency, focus habits, and mental fatigue",
+  "coaching_advice": "personalized wellness and productivity coaching tips on preventing burnout, pacing, or work-life balance",
+  "weekly_wins": ["list of 2-3 major wins or achievements this week"],
+  "suggested_changes": ["actionable adjustments recommended for next week to optimize focus/prevent stress"],
+  "metrics": {
+    "completion_rate": 0-100 (integer, overall task completion rate for the week),
+    "best_working_day": "e.g., Monday, Tuesday",
+    "best_working_hours": "e.g., 09:00 - 11:00, 14:00 - 16:00",
+    "most_delayed_category": "the category/area where tasks were most delayed or overdue"
+  }
+}
+
+Do not wrap the response in markdown formatting or include any other text. Output pure JSON.`;
+
       const responseText = await AIClient.generateText(
         [
           { role: "user" as const, content: prompt }
