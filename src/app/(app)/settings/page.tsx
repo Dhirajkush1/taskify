@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import type { Database } from "@/types/database.types";
 import { 
   Bell, Brain, Moon, Shield, Loader2, Sparkles, 
   Send, Check, Copy, ExternalLink, RefreshCw, AlertCircle, Trash2
@@ -148,9 +149,24 @@ export default function SettingsPage() {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
 
+    const updatePayload: Database["public"]["Tables"]["settings"]["Update"] = {};
+    if (key === "theme") {
+      updatePayload.theme = value;
+    } else if (key === "notifications_enabled") {
+      updatePayload.notifications_enabled = value;
+    } else if (key === "ai_suggestions_enabled") {
+      updatePayload.ai_suggestions_enabled = value;
+    } else if (key === "daily_summary_time") {
+      updatePayload.daily_summary_time = value;
+    } else if (key === "ai_personality") {
+      updatePayload.ai_personality = value;
+    } else if (key === "updated_at") {
+      updatePayload.updated_at = value;
+    }
+
     const { error } = await supabase
       .from("settings")
-      .update({ [key]: value })
+      .update(updatePayload)
       .eq("user_id", settings.user_id);
 
     if (error) {
@@ -168,9 +184,26 @@ export default function SettingsPage() {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      const updatePayload: Database["public"]["Tables"]["notification_preferences"]["Update"] = {};
+      if (key === "telegram_enabled") {
+        updatePayload.telegram_enabled = value;
+      } else if (key === "daily_debrief_enabled") {
+        updatePayload.daily_debrief_enabled = value;
+      } else if (key === "weekly_reflection_enabled") {
+        updatePayload.weekly_reflection_enabled = value;
+      } else if (key === "reminders_enabled") {
+        updatePayload.reminders_enabled = value;
+      } else if (key === "emergency_alerts_enabled") {
+        updatePayload.emergency_alerts_enabled = value;
+      } else if (key === "focus_session_alerts_enabled") {
+        updatePayload.focus_session_alerts_enabled = value;
+      } else if (key === "updated_at") {
+        updatePayload.updated_at = value;
+      }
+
       const { error } = await supabase
         .from("notification_preferences")
-        .update({ [key]: value })
+        .update(updatePayload)
         .eq("user_id", user.id);
 
       if (error) {
