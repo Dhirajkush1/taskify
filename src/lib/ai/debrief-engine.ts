@@ -60,14 +60,19 @@ export class DebriefEngine {
     if (existing) {
       return {
         summary: existing.summary,
-        metrics: existing.metrics,
-        completed_tasks: existing.completed_tasks,
-        delayed_tasks: existing.delayed_tasks,
-        improvements: existing.improvements,
-        tomorrow_priorities: existing.tomorrow_priorities,
-        tomorrow_probability: existing.tomorrow_probability,
-        best_achievement: existing.best_achievement,
-        missed_opportunities: existing.missed_opportunities
+        metrics: (existing.metrics as unknown as DailyDebriefData["metrics"]) || {
+          completion_rate: 0,
+          focus_time_minutes: 0,
+          productivity_score: 0,
+          current_streak: 0
+        },
+        completed_tasks: (existing.completed_tasks as string[]) || [],
+        delayed_tasks: (existing.delayed_tasks as string[]) || [],
+        improvements: (existing.improvements as string[]) || [],
+        tomorrow_priorities: (existing.tomorrow_priorities as string[]) || [],
+        tomorrow_probability: existing.tomorrow_probability ?? 0,
+        best_achievement: existing.best_achievement || "",
+        missed_opportunities: (existing.missed_opportunities as string[]) || []
       };
     }
 
@@ -83,22 +88,20 @@ export class DebriefEngine {
       .eq("user_id", userId)
       .gte("created_at", `${targetDateStr}T00:00:00Z`);
 
-    const { data: memory } = await supabase
-      .from("ai_memory")
+    const { data: memories } = await supabase
+      .from("user_memories")
       .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
 
-    const { data: settings } = await supabase
-      .from("settings")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const memoryMap: Record<string, string> = {};
+    if (memories) {
+      for (const m of memories) {
+        memoryMap[m.memory_key] = m.memory_value;
+      }
+    }
 
     const allTasks = tasks || [];
     const sessions = focusSessions || [];
-    const userMemory = memory || {};
-    const userSettings = settings || {};
 
     const completedToday = allTasks.filter(
       (t) => t.status === "done" && t.updated_at && t.updated_at.startsWith(targetDateStr)
@@ -123,8 +126,8 @@ export class DebriefEngine {
       const context = {
         date: targetDateStr,
         userPreferences: {
-          memory: userMemory.memory_data || {},
-          working_hours: userSettings.preferred_work_hours || "9:00 - 17:00"
+          memory: memoryMap,
+          working_hours: memoryMap["work_hours"] || "9:00 - 17:00"
         },
         todayCompleted: completedToday.map((t) => t.title),
         todayDelayed: delayedToday.map((t) => t.title),
@@ -170,6 +173,8 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
         tomorrow_priorities: parsed.tomorrow_priorities || [],
         improvements: parsed.improvements || [],
         missed_opportunities: parsed.missed_opportunities || [],
+        completed_tasks: completedToday.map((t) => t.title),
+        delayed_tasks: delayedToday.map((t) => t.title),
         metrics: {
           completion_rate: completionRate,
           focus_time_minutes: focusMinutes,
@@ -185,22 +190,23 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
           user_id: userId,
           debrief_date: targetDateStr,
           summary: debriefData.summary,
-          metrics: debriefData.metrics,
-          completed_tasks: completedToday.map((t) => t.title),
-          delayed_tasks: delayedToday.map((t) => t.title),
-          improvements: debriefData.improvements,
-          tomorrow_priorities: debriefData.tomorrow_priorities,
+          metrics: debriefData.metrics as any,
+          completed_tasks: completedToday.map((t) => t.title) as any,
+          delayed_tasks: delayedToday.map((t) => t.title) as any,
+          improvements: debriefData.improvements as any,
+          tomorrow_priorities: debriefData.tomorrow_priorities as any,
           tomorrow_probability: debriefData.tomorrow_probability,
           best_achievement: debriefData.best_achievement,
-          missed_opportunities: debriefData.missed_opportunities,
+          missed_opportunities: debriefData.missed_opportunities as any,
           created_at: new Date().toISOString()
         }, { onConflict: "user_id,debrief_date" });
 
       // Log event
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "DailyDebriefGenerated",
-        metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score }
+        action: "DailyDebriefGenerated",
+        entity_type: "system",
+        metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score } as any
       });
 
       // Proactive Telegram Daily Debrief
@@ -265,12 +271,17 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
         start_date: existing.start_date,
         end_date: existing.end_date,
         reflection_text: existing.reflection_text,
-        metrics: existing.metrics,
-        weekly_wins: existing.weekly_wins,
-        focus_trends: existing.focus_trends,
-        burnout_trend: existing.burnout_trend,
-        coaching_advice: existing.coaching_advice,
-        suggested_changes: existing.suggested_changes
+        metrics: (existing.metrics as unknown as WeeklyReflectionData["metrics"]) || {
+          completion_rate: 0,
+          best_working_day: "",
+          best_working_hours: "",
+          most_delayed_category: ""
+        },
+        weekly_wins: (existing.weekly_wins as string[]) || [],
+        focus_trends: (existing.focus_trends as WeeklyReflectionData["focus_trends"]) || [],
+        burnout_trend: (existing.burnout_trend as WeeklyReflectionData["burnout_trend"]) || [],
+        coaching_advice: existing.coaching_advice || "",
+        suggested_changes: (existing.suggested_changes as string[]) || []
       };
     }
 
@@ -291,7 +302,7 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
 
     const burnoutTrend = historyLogs.map((h) => ({
       date: h.recorded_date,
-      score: h.stress_index || 0
+      score: (h.details as any)?.stress_index || 0
     }));
 
     // Formulate weekly analytics using Gemini
@@ -311,7 +322,7 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
           date: h.recorded_date,
           completed: h.tasks_completed_count,
           focus_minutes: h.focus_time_minutes,
-          stress: h.stress_index
+          stress: (h.details as any)?.stress_index || 0
         }))
       };
 
@@ -369,20 +380,21 @@ Do not wrap in markdown or add conversational text. Return raw JSON.`;
           start_date: startDateStr,
           end_date: endDateStr,
           reflection_text: reflectionData.reflection_text,
-          metrics: reflectionData.metrics,
-          weekly_wins: reflectionData.weekly_wins,
-          focus_trends: reflectionData.focus_trends,
-          burnout_trend: reflectionData.burnout_trend,
+          metrics: reflectionData.metrics as any,
+          weekly_wins: reflectionData.weekly_wins as any,
+          focus_trends: reflectionData.focus_trends as any,
+          burnout_trend: reflectionData.burnout_trend as any,
           coaching_advice: reflectionData.coaching_advice,
-          suggested_changes: reflectionData.suggested_changes,
+          suggested_changes: reflectionData.suggested_changes as any,
           created_at: new Date().toISOString()
         }, { onConflict: "user_id,start_date" });
 
       // Log event
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "WeeklyReflectionGenerated",
-        metadata: { start: startDateStr, end: endDateStr }
+        action: "WeeklyReflectionGenerated",
+        entity_type: "system",
+        metadata: { start: startDateStr, end: endDateStr } as any
       });
 
       // Proactive Telegram Weekly Reflection
