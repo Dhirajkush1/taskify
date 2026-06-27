@@ -452,7 +452,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   }}
                 >
                   <p className="text-xs italic leading-relaxed text-amber-200">
-                    "{metadata.coaching_advice.encouragement}"
+                    &quot;{metadata.coaching_advice.encouragement}&quot;
                   </p>
                   {metadata.coaching_advice.micro_tasks && metadata.coaching_advice.micro_tasks.length > 0 && (
                     <div className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: "rgba(245, 158, 11, 0.1)" }}>
