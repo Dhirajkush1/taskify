@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 // Global event name for triggering confetti
 const CONFETTI_EVENT = "clutch-trigger-confetti";
