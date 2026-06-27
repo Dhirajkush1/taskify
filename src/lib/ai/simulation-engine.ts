@@ -104,12 +104,13 @@ Do not wrap in markdown or include extra conversational text. Return raw JSON.`;
       // Log event in activity logs
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "SimulationRequested",
+        action: "SimulationRequested",
+        entity_type: "system",
         metadata: {
           scenario: scenarioPrompt,
           impact: parsed.workload_impact,
           simulated_prob: parsed.simulated_completion_probability
-        }
+        } as any
       });
 
       return {
