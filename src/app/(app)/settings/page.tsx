@@ -197,8 +197,6 @@ export default function SettingsPage() {
         updatePayload.emergency_alerts_enabled = value;
       } else if (key === "focus_session_alerts_enabled") {
         updatePayload.focus_session_alerts_enabled = value;
-      } else if (key === "updated_at") {
-        updatePayload.updated_at = value;
       }
 
       const { error } = await supabase
