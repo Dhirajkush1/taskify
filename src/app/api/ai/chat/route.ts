@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient, AIConfig } from "@/lib/ai/providers";
 import { createClient } from "@/lib/supabase/server";
 import { ContextBuilder } from "@/lib/ai/context-builder";
 import { ActionOrchestrator } from "@/lib/ai/action-orchestrator";
@@ -154,85 +154,25 @@ ${context.promptContextString}
 
     // 3. Call AI Model Synchronously (only if no command was intercepted)
     if (!rawResponseText) {
-      if (provider === "gemini") {
-        console.log("[ChatRoute] Invoking Gemini 1.5 synchronously...");
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        rawResponseText = JSON.stringify({
-          chat_response: "I encountered an issue connecting to my Gemini AI core. It looks like a valid Gemini API Key is missing. Please switch to 'Groq' at the bottom to continue, or add a valid Gemini key to .env.local!",
-          extracted_tasks: [],
-          execution_plan: null
-        });
-      } else {
-        try {
-          const genAI = new GoogleGenerativeAI(apiKey);
-          const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            systemInstruction: customSystemInstruction,
-            generationConfig: {
-              responseMimeType: "application/json",
-              temperature: 0.2,
-            },
-          });
+      try {
+        const mappedMessages = messages.map((m) => ({
+          role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+          content: m.content,
+        }));
 
-          // Map history to Gemini format (excluding the last user message)
-          const history = messages.slice(0, -1).map((msg) => ({
-            role: msg.role === "assistant" ? "model" : "user",
-            parts: [{ text: msg.content }],
-          }));
-
-          const chat = model.startChat({ history });
-          const result = await chat.sendMessage(lastMessageContent);
-          rawResponseText = result.response.text();
-        } catch (geminiErr: any) {
-          console.error("[ChatRoute] Gemini API call error:", geminiErr);
-          throw new Error(`Gemini Core error: ${geminiErr.message || geminiErr}`);
-        }
+        rawResponseText = await AIClient.generateText(
+          mappedMessages,
+          {
+            provider,
+            systemPrompt: customSystemInstruction,
+            temperature: 0.2,
+            ...(provider === "gemini" ? { responseMimeType: "application/json" } : { jsonMode: true }),
+          } as AIConfig
+        );
+      } catch (err: any) {
+        console.error("[ChatRoute] AI Client generateText error:", err);
+        throw new Error(`AI Core error: ${err.message || err}`);
       }
-    } else {
-      console.log("[ChatRoute] Invoking Groq (Llama 3.3) synchronously...");
-      const apiKey = process.env.GROQ_API_KEY;
-      if (!apiKey) {
-        rawResponseText = JSON.stringify({
-          chat_response: "Error: GROQ_API_KEY is not configured in your environment variables. Please add it to your .env.local file.",
-          extracted_tasks: [],
-          execution_plan: null
-        });
-      } else {
-        try {
-          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
-              response_format: { type: "json_object" },
-              temperature: 0.2,
-              messages: [
-                { role: "system", content: customSystemInstruction },
-                ...messages.map(m => ({
-                  role: m.role === "assistant" ? "assistant" : "user",
-                  content: m.content
-                }))
-              ],
-            }),
-          });
-
-          if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Groq API returned status ${response.status}: ${errText}`);
-          }
-
-          const data = await response.json();
-          rawResponseText = data.choices?.[0]?.message?.content || "{}";
-        } catch (groqErr: any) {
-          console.error("[ChatRoute] Groq API call error:", groqErr);
-          throw new Error(`Groq Core error: ${groqErr.message || groqErr}`);
-        }
-      }
-    }
     }
 
     // 4. Clean and Parse JSON response

@@ -1,5 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@/lib/supabase/server";
+import { AIClient } from "@/lib/ai/providers";
 
 export interface DailyDebriefData {
   summary: string;
@@ -36,11 +36,6 @@ export interface WeeklyReflectionData {
 }
 
 export class DebriefEngine {
-  private static getGenAI() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return null;
-    return new GoogleGenerativeAI(apiKey);
-  }
 
   /**
    * Generates or fetches the daily debrief for a user on a specific date.
@@ -114,56 +109,18 @@ export class DebriefEngine {
     const totalToday = completedToday.length + delayedToday.length;
     const completionRate = totalToday > 0 ? Math.round((completedToday.length / totalToday) * 100) : 100;
 
-    const genAI = this.getGenAI();
-    if (!genAI) {
-      console.warn("Gemini API key missing for DebriefEngine.");
-      return null;
-    }
-
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-      const context = {
-        date: targetDateStr,
-        userPreferences: {
-          memory: memoryMap,
-          working_hours: memoryMap["work_hours"] || "9:00 - 17:00"
-        },
-        todayCompleted: completedToday.map((t) => t.title),
-        todayDelayed: delayedToday.map((t) => t.title),
-        focusMinutes,
-        completionRate
-      };
-
-      const prompt = `You are Clutch, the personalized AI Productivity Companion. 
-Your goal is to generate a highly personal, insightful Daily Debrief summarizing the user's productivity today:
-
-Today's context:
-${JSON.stringify(context, null, 2)}
-
-Create a summary that feels deeply encouraging and personalized. Rather than just listing numbers, analyze their working habits, praise their completed tasks, point out missed opportunities or delayed items gently, highlight their best achievement of the day, and map out their priorities for tomorrow.
-
-Respond ONLY with a valid JSON object matching this schema:
-{
-  "summary": "Personal, conversational, and motivating 2-3 sentence daily summary",
-  "best_achievement": "Name of their single most significant win of the day",
-  "tomorrow_probability": integer (0-100, predicted success probability for tomorrow),
-  "tomorrow_priorities": ["Priority task 1", "Priority task 2"],
-  "improvements": ["Specific improvement recommendation 1", "Specific improvement recommendation 2"],
-  "missed_opportunities": ["Gently noted missed opportunity or delayed task context"],
-  "metrics": {
-    "completion_rate": integer,
-    "focus_time_minutes": integer,
-    "productivity_score": integer (0-100 rating of the day),
-    "current_streak": integer (streak value)
-  }
-}
-
-Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          responseMimeType: "application/json"
+        }
+      );
+      const cleaned = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const parsed = JSON.parse(cleaned);
 
       const debriefData: DailyDebriefData = {
@@ -306,53 +263,18 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
     }));
 
     // Formulate weekly analytics using Gemini
-    const genAI = this.getGenAI();
-    if (!genAI) {
-      console.warn("Gemini API key missing for weekly reflection.");
-      return null;
-    }
-
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-      const context = {
-        startDate: startDateStr,
-        endDate: endDateStr,
-        logs: historyLogs.map((h) => ({
-          date: h.recorded_date,
-          completed: h.tasks_completed_count,
-          focus_minutes: h.focus_time_minutes,
-          stress: (h.details as any)?.stress_index || 0
-        }))
-      };
-
-      const prompt = `You are Clutch, the premier AI productivity advisor.
-Generate a Weekly Reflection summarizing the user's performance and wellness over the past 7 days.
-
-Weekly logs:
-${JSON.stringify(context, null, 2)}
-
-Provide a deeply analytical, coaching-oriented reflection. Detail their weekly wins, identify their best working day and hours, call out burnout trends, and outline suggested structural changes.
-
-Respond ONLY with a valid JSON object matching this schema:
-{
-  "reflection_text": "A comprehensive weekly analysis and performance summary (2-3 paragraphs)",
-  "coaching_advice": "Actionable coaching and habit modification advice",
-  "weekly_wins": ["Win 1", "Win 2", "Win 3"],
-  "suggested_changes": ["Structural change 1", "Structural change 2"],
-  "metrics": {
-    "completion_rate": integer (average completion rate),
-    "best_working_day": "e.g. Wednesday",
-    "best_working_hours": "e.g. 10:00 - 12:00",
-    "most_delayed_category": "e.g. Study / Coding"
-  }
-}
-
-Do not wrap in markdown or add conversational text. Return raw JSON.`;
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          responseMimeType: "application/json"
+        }
+      );
+      const cleaned = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const parsed = JSON.parse(cleaned);
 
       const reflectionData: WeeklyReflectionData = {

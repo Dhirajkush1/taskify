@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient } from "./providers";
 import { ContextBuilder } from "./context-builder";
 import type { Task } from "@/types/app.types";
 
@@ -38,17 +38,7 @@ export class CoachService {
     }
 
     // Call Gemini to supercharge the coaching insight!
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return { encouragement, micro_tasks, metrics_brief };
-    }
-
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json" },
-      });
 
       const context = await ContextBuilder.buildContext(userId, "give coaching advice and progress metrics");
 
@@ -74,8 +64,18 @@ ${context.promptContextString}
 Generate my smart coaching insight card now. Keep user stress levels low and motivation high.
 `;
 
-      const result = await model.generateContent([systemInstruction, prompt]);
-      return JSON.parse(result.response.text());
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          systemPrompt: systemInstruction,
+          responseMimeType: "application/json"
+        }
+      );
+      return JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());
     } catch (err) {
       console.error("[CoachService] Gemini coaching generation error, returning fallback:", err);
       return { encouragement, micro_tasks, metrics_brief };

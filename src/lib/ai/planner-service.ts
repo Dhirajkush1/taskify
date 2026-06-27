@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient } from "./providers";
 import { ContextBuilder } from "./context-builder";
 import type { Task } from "@/types/app.types";
 
@@ -70,15 +70,6 @@ export class PlannerService {
    * Triggered when tasks are overdue or skipped.
    */
   static async regenerateTimeBlockPlan(userId: string): Promise<any> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      generationConfig: { responseMimeType: "application/json" },
-    });
-
     // 1. Build rich context containing memories, current plan, and tasks
     const context = await ContextBuilder.buildContext(userId, "regenerate my schedule, reschedule overdue items");
 
@@ -116,8 +107,17 @@ Some tasks might be overdue or skipped.
 Optimize my workload and map out specific hour-blocked time blocks for today and tomorrow.
 `;
 
-    const result = await model.generateContent([systemInstruction, prompt]);
-    const text = result.response.text();
+    const text = await AIClient.generateText(
+      [
+        { role: "user" as const, content: prompt }
+      ],
+      {
+        provider: "gemini",
+        model: "gemini-1.5-flash",
+        systemPrompt: systemInstruction,
+        responseMimeType: "application/json"
+      }
+    );
 
     try {
       const planData = JSON.parse(text);

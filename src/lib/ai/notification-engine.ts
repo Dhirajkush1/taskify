@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient } from "./providers";
 import type { Task } from "@/types/app.types";
 
 export interface SmartNotification {
@@ -80,17 +80,7 @@ export class NotificationEngine {
     }
 
     // Call Gemini to generate a hyper-personalized notification if API key exists!
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return notifications.slice(0, 3);
-    }
-
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json" },
-      });
 
       const systemInstruction = `
 You are Clutch's Smart Notification Engine. Your goal is to generate extremely engaging, action-focused, contextual notifications for a user based on their pending tasks.
@@ -115,8 +105,18 @@ ${pending.map((t) => `- Title: "${t.title}" | Deadline: ${t.deadline || "None"} 
 Generate 3 highly contextual, motivating notifications.
 `;
 
-      const result = await model.generateContent([systemInstruction, prompt]);
-      const parsed = JSON.parse(result.response.text());
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          systemPrompt: systemInstruction,
+          responseMimeType: "application/json"
+        }
+      );
+      const parsed = JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());
       return parsed && parsed.length > 0 ? parsed : notifications;
     } catch (err) {
       console.error("[NotificationEngine] Gemini notification generation error, returning fallbacks:", err);

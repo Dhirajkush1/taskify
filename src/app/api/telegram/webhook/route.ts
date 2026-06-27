@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient, AIMessage } from "@/lib/ai/providers";
 import { TelegramBotService } from "@/lib/telegram/bot-service";
 import { ContextBuilder } from "@/lib/ai/context-builder";
 import { ActionOrchestrator } from "@/lib/ai/action-orchestrator";
@@ -454,26 +454,38 @@ ${sim.suggested_alternative}
     const dayOfWeek = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(today);
     const basePrompt = AUTONOMOUS_SYSTEM_PROMPT(todayStr, dayOfWeek);
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      systemInstruction: `${basePrompt}\n\n[CONTEXT]\n${context.promptContextString}\n\nIMPORTANT: The user is messaging from Telegram. Keep your 'chat_response' extremely clear, formatted in standard HTML tags (<b>, <i>, <code>, <a>), and reasonably concise. Do NOT return markdown format inside 'chat_response'.`,
-      generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
-    });
+    const systemPrompt = `${basePrompt}\n\n[CONTEXT]\n${context.promptContextString}\n\nIMPORTANT: The user is messaging from Telegram. Keep your 'chat_response' extremely clear, formatted in standard HTML tags (<b>, <i>, <code>, <a>), and reasonably concise. Do NOT return markdown format inside 'chat_response'.`;
 
-    const parts: any[] = [];
+    const activeMessages: AIMessage[] = [];
     if (filePart) {
-      parts.push({
-        inlineData: {
-          data: filePart.base64Data,
-          mimeType: filePart.mimeType
-        }
+      activeMessages.push({
+        role: "user",
+        content: [
+          {
+            inlineData: {
+              data: filePart.base64Data,
+              mimeType: filePart.mimeType
+            }
+          },
+          { text: userContent }
+        ]
+      });
+    } else {
+      activeMessages.push({
+        role: "user",
+        content: userContent
       });
     }
-    parts.push({ text: userContent });
 
-    const result = await model.generateContent(parts);
-    const responseText = result.response.text();
+    const responseText = await AIClient.generateText(
+      activeMessages,
+      {
+        provider: "gemini",
+        model: "gemini-1.5-flash",
+        systemPrompt,
+        responseMimeType: "application/json"
+      }
+    );
 
     // F. Parse AI Structured Response & Run Action Orchestrator
     const parsedData = JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());

@@ -1,5 +1,3 @@
-import { extractTasksFromText, extractTasksWithGroq } from "@/lib/gemini/client";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export interface AutonomousAIOutput {
   chat_response: string;
@@ -138,121 +136,75 @@ CRITICAL RULES:
 5. If the user says 'remind me to X in Y minutes' or 'set a reminder for X', extract it into the 'extracted_reminders' array.
 `;
 
+import { AIClient, AIMessage, AIConfig } from "./providers";
+
 /**
- * Runs the autonomous thinking flow using Gemini.
- * Supports image, PDF, and voice transcription inputs (sent as base64 parts).
+ * Runs the autonomous thinking flow using the unified AIClient.
+ * Supports text, image, PDF, and voice transcription inputs.
  */
-export async function runAutonomousGemini(
-  messages: Array<{ role: "user" | "model"; parts: any[] }>,
+export async function runAutonomousAI(
+  messages: Array<{ role: "user" | "assistant" | "system"; content: string | any[] }>,
+  provider: "gemini" | "groq" = "gemini",
   fileAttachment?: { base64Data: string; mimeType: string }
 ): Promise<AutonomousAIOutput> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.startsWith("AQ.")) {
-    throw new Error("Invalid or missing GEMINI_API_KEY");
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    generationConfig: { responseMimeType: "application/json" },
-  });
-
   const today = new Date();
   const todayStr = today.toISOString();
   const dayOfWeek = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(today);
 
   // Compile history and instructions
-  const systemInstruction = AUTONOMOUS_SYSTEM_PROMPT(todayStr, dayOfWeek);
-  const promptModel = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    systemInstruction,
-    generationConfig: { responseMimeType: "application/json" },
-  });
+  const systemPrompt = AUTONOMOUS_SYSTEM_PROMPT(todayStr, dayOfWeek);
 
-  const chatHistory = messages.slice(0, -1).map((msg) => ({
-    role: msg.role,
-    parts: msg.parts,
+  const activeMessages: AIMessage[] = messages.map((m) => ({
+    role: m.role,
+    content: m.content,
   }));
 
-  const chat = promptModel.startChat({
-    history: chatHistory,
-  });
-
-  const lastMessage = messages[messages.length - 1];
-  const lastParts: any[] = [...(lastMessage?.parts || [])];
-
-  // If there's an image or PDF attachment, append it as a generative part
+  // If there's an image or PDF attachment, append it as a generative part (multimodal for Gemini)
   if (fileAttachment) {
-    lastParts.push({
+    const lastMsgIndex = activeMessages.length - 1;
+    const lastMsg = activeMessages[lastMsgIndex] || { role: "user", content: "" };
+    
+    let contentParts: any[] = [];
+    if (typeof lastMsg.content === "string") {
+      if (lastMsg.content) {
+        contentParts.push({ text: lastMsg.content });
+      }
+    } else if (Array.isArray(lastMsg.content)) {
+      contentParts = [...lastMsg.content];
+    }
+
+    contentParts.push({
       inlineData: {
         data: fileAttachment.base64Data,
         mimeType: fileAttachment.mimeType,
       },
     });
+
+    activeMessages[lastMsgIndex] = {
+      ...lastMsg,
+      content: contentParts,
+    };
   }
 
   // Fallback in case of empty text input
-  if (lastParts.length === 0) {
-    lastParts.push({ text: "Analyze my current task status and suggest the next actions." });
+  if (activeMessages.length === 0) {
+    activeMessages.push({ role: "user", content: "Analyze my current task status and suggest the next actions." });
   }
 
-  const result = await chat.sendMessage(lastParts);
-  const textResponse = result.response.text();
+  const config: AIConfig = {
+    provider,
+    systemPrompt,
+    temperature: 0.2,
+    ...(provider === "gemini" ? { responseMimeType: "application/json" } : { jsonMode: true }),
+  } as AIConfig;
+
+  const responseText = await AIClient.generateText(activeMessages, config);
 
   try {
-    return JSON.parse(textResponse);
+    return JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());
   } catch (err) {
-    console.error("Failed to parse Gemini JSON output. Raw output was:", textResponse);
+    console.error("Failed to parse AI JSON output. Raw output was:", responseText);
     throw new Error("AI returned invalid JSON structure");
   }
 }
 
-/**
- * Runs the autonomous thinking flow using Groq (Llama-3.3-70b-versatile).
- * Note: Groq is text-only.
- */
-export async function runAutonomousGroq(
-  messages: Array<{ role: "user" | "assistant"; content: string }>
-): Promise<AutonomousAIOutput> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GROQ_API_KEY");
-  }
-
-  const today = new Date();
-  const todayStr = today.toISOString();
-  const dayOfWeek = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(today);
-  const systemInstruction = AUTONOMOUS_SYSTEM_PROMPT(todayStr, dayOfWeek);
-
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: systemInstruction },
-        ...messages,
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Groq API error: ${response.status} - ${err}`);
-  }
-
-  const data = await response.json();
-  const rawContent = data.choices?.[0]?.message?.content || "{}";
-
-  try {
-    return JSON.parse(rawContent);
-  } catch (err) {
-    console.error("Failed to parse Groq JSON output. Raw output was:", rawContent);
-    throw new Error("Groq AI returned invalid JSON structure");
-  }
-}

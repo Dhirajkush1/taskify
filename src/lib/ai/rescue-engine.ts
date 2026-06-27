@@ -1,5 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@/lib/supabase/server";
+import { AIClient } from "@/lib/ai/providers";
 import type { Task } from "@/types/app.types";
 
 export interface EmergencyStep {
@@ -21,11 +21,6 @@ export interface RescuePlanData {
 }
 
 export class RescueEngine {
-  private static getGenAI() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return null;
-    return new GoogleGenerativeAI(apiKey);
-  }
 
   /**
    * Evaluates the user's tasks and determines if Rescue Mode should be triggered.
@@ -100,15 +95,7 @@ export class RescueEngine {
       return null;
     }
 
-    // 3. Formulate the emergency plan using Gemini
-    const genAI = this.getGenAI();
-    if (!genAI) {
-      console.warn("Gemini API key missing for RescueEngine.");
-      return null;
-    }
-
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const tasksContext = pendingTasks.map((t) => ({
         id: t.id,
         title: t.title,
@@ -147,9 +134,17 @@ Respond ONLY with a valid JSON object matching this schema:
 
 Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          responseMimeType: "application/json"
+        }
+      );
+      const cleaned = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const parsed = JSON.parse(cleaned);
 
       const planData: RescuePlanData = {
