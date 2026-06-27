@@ -6,21 +6,23 @@ import type { TaskPriority, TaskStatus } from "@/types/app.types";
 
 interface TaskFiltersProps {
   onFiltersChange: (filters: {
-    status?: string;
-    priority?: string;
+    status?: TaskStatus;
+    priority?: TaskPriority;
     search?: string;
   }) => void;
 }
 
 export function TaskFilters({ onFiltersChange }: TaskFiltersProps) {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<string>("");
-  const [priority, setPriority] = useState<string>("");
+  const [status, setStatus] = useState<TaskStatus | "">("");
+  const [priority, setPriority] = useState<TaskPriority | "">("");
 
-  const update = (newFilters: { status?: string; priority?: string; search?: string }) => {
+  const update = (newFilters: { status?: TaskStatus | ""; priority?: TaskPriority | ""; search?: string }) => {
+    const resolvedStatus = (newFilters.status ?? status) || undefined;
+    const resolvedPriority = (newFilters.priority ?? priority) || undefined;
     onFiltersChange({
-      status: (newFilters.status ?? status) || undefined,
-      priority: (newFilters.priority ?? priority) || undefined,
+      status: resolvedStatus as TaskStatus | undefined,
+      priority: resolvedPriority as TaskPriority | undefined,
       search: (newFilters.search ?? search) || undefined,
     });
   };
@@ -61,8 +63,9 @@ export function TaskFilters({ onFiltersChange }: TaskFiltersProps) {
         id="task-filter-status"
         value={status}
         onChange={(e) => {
-          setStatus(e.target.value);
-          update({ status: e.target.value });
+          const val = e.target.value as TaskStatus | "";
+          setStatus(val);
+          update({ status: val });
         }}
         className="px-3 py-2.5 rounded-xl text-sm"
         style={{
@@ -83,8 +86,9 @@ export function TaskFilters({ onFiltersChange }: TaskFiltersProps) {
         id="task-filter-priority"
         value={priority}
         onChange={(e) => {
-          setPriority(e.target.value);
-          update({ priority: e.target.value });
+          const val = e.target.value as TaskPriority | "";
+          setPriority(val);
+          update({ priority: val });
         }}
         className="px-3 py-2.5 rounded-xl text-sm"
         style={{
