@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, RotateCcw, CheckCircle2, Clock, Brain, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -21,7 +21,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
   const [completed, setCompleted] = useState<boolean>(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // Filter and sort tasks for focus selection based on execution priority
   const activeTasks = tasks
@@ -70,7 +70,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRunning]);
+  }, [isRunning, handleTimerFinish]);
 
   // Helper to play synthesized beep/chime using Web Audio API (no external asset dependencies!)
   const playSynthesizedChime = () => {
@@ -107,7 +107,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
     }
   };
 
-  const handleTimerFinish = async () => {
+  const handleTimerFinish = useCallback(async () => {
     setIsRunning(false);
     playSynthesizedChime();
     triggerConfetti(); // Trigger confetti celebration!
@@ -162,7 +162,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
       setSaving(false);
       if (onSessionComplete) onSessionComplete();
     }
-  };
+  }, [selectedTaskId, durationPreset, supabase, onSessionComplete]);
 
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
