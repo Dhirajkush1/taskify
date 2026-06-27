@@ -412,15 +412,19 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
 
     // C. Intercept What-If Simulator command in Telegram
     if (userContent.toLowerCase().includes("what if") || userContent.toLowerCase().includes("what-if")) {
-      const sim = await SimulationEngine.simulateDecision(userId, userContent, supabaseAdmin);
+      const sim = await SimulationEngine.runSimulation(userId, userContent);
+      if (!sim) {
+        await TelegramBotService.sendMessage(chatId, "⚠️ Failed to run the What-If simulation. Please try again.");
+        return;
+      }
       const simResponse = `
 🔮 <b>What-If Decision Simulation</b>
 
 🧠 <b>Decision:</b> "${userContent}"
 
-📈 <b>Probability Change:</b> ${sim.original_probability}% ➔ <b>${sim.simulated_probability}%</b>
-⚠️ <b>Risk Level:</b> <b>${sim.deadline_risk.toUpperCase()}</b>
-🔋 <b>Bio-Load Density:</b> <b>${sim.bio_load_density}%</b>
+📈 <b>Probability Change:</b> ${sim.current_completion_probability}% ➔ <b>${sim.simulated_completion_probability}%</b>
+⚠️ <b>Risk Level:</b> <b>${sim.simulated_deadline_risk.toUpperCase()}</b>
+🔋 <b>Workload Impact:</b> <b>${sim.workload_impact}</b>
 
 📝 <b>Clutch AI Reasoning:</b>
 <i>${sim.reasoning}</i>
@@ -442,13 +446,18 @@ ${sim.suggested_alternative}
     }
 
     // D. Compile Rich Context
-    const context = await ContextBuilder.buildContext(userId);
+    const context = await ContextBuilder.buildContext(userId, userContent);
 
     // E. Invoke Gemini Model Synchronously
+    const today = new Date();
+    const todayStr = today.toISOString();
+    const dayOfWeek = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(today);
+    const basePrompt = AUTONOMOUS_SYSTEM_PROMPT(todayStr, dayOfWeek);
+
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: "gemini-1.5-flash",
-      systemInstruction: `${AUTONOMOUS_SYSTEM_PROMPT}\n\n[CONTEXT]\n${context}\n\nIMPORTANT: The user is messaging from Telegram. Keep your 'chat_response' extremely clear, formatted in standard HTML tags (<b>, <i>, <code>, <a>), and reasonably concise. Do NOT return markdown format inside 'chat_response'.`,
+      systemInstruction: `${basePrompt}\n\n[CONTEXT]\n${context.promptContextString}\n\nIMPORTANT: The user is messaging from Telegram. Keep your 'chat_response' extremely clear, formatted in standard HTML tags (<b>, <i>, <code>, <a>), and reasonably concise. Do NOT return markdown format inside 'chat_response'.`,
       generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
     });
 
