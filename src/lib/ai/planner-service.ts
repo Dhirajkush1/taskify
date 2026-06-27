@@ -124,28 +124,34 @@ Optimize my workload and map out specific hour-blocked time blocks for today and
       
       // Save plan back to Supabase
       const supabase = await createClient();
-      await supabase.from("execution_plans").upsert(
+      const { error: upsertError } = await supabase.from("execution_plans").upsert(
         {
           user_id: userId,
           plan_type: "daily",
-          plan_data: planData,
+          plan_data: planData as any,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id, plan_type" }
-      ).catch(() => {
+      );
+
+      if (upsertError) {
+        console.warn("[PlannerService] Upsert failed, running fallback delete & insert:", upsertError.message);
         // Fallback delete/insert
-        supabase
+        await supabase
           .from("execution_plans")
           .delete()
-          .match({ user_id: userId, plan_type: "daily" })
-          .then(() => {
-            supabase.from("execution_plans").insert({
-              user_id: userId,
-              plan_type: "daily",
-              plan_data: planData,
-            });
-          });
-      });
+          .match({ user_id: userId, plan_type: "daily" });
+
+        const { error: insertError } = await supabase.from("execution_plans").insert({
+          user_id: userId,
+          plan_type: "daily",
+          plan_data: planData as any,
+        });
+
+        if (insertError) {
+          console.error("[PlannerService] Fallback insert failed:", insertError.message);
+        }
+      }
 
       return planData;
     } catch (err) {
