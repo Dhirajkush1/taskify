@@ -82,7 +82,7 @@ export function GoalBoard() {
         title: goalTitle,
         description: goalDesc || null,
         target_date: goalDate || null,
-        status: "active",
+        status: "active" as const,
       });
 
       if (!error) {
@@ -107,7 +107,7 @@ export function GoalBoard() {
         title: milestoneTitle,
         description: milestoneDesc || null,
         target_date: milestoneDate || null,
-        status: "todo",
+        status: "todo" as const,
       })
       .select()
       .single();

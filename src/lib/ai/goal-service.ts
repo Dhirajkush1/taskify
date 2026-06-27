@@ -70,7 +70,7 @@ Decompose this milestone into 3-5 clear tasks.
           milestone_id: milestoneId,
           title: t.title,
           description: t.description || null,
-          priority: t.priority || "medium",
+          priority: (t.priority || "medium") as "critical" | "high" | "medium" | "low",
           status: "todo" as const,
           estimated_duration: t.estimated_duration || 45,
           completion_percentage: 0,
