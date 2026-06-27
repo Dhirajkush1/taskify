@@ -71,11 +71,11 @@ Decompose this milestone into 3-5 clear tasks.
           title: t.title,
           description: t.description || null,
           priority: t.priority || "medium",
-          status: "todo",
+          status: "todo" as const,
           estimated_duration: t.estimated_duration || 45,
           completion_percentage: 0,
           priority_score: t.priority === "critical" ? 90 : t.priority === "high" ? 75 : 50,
-          risk_level: "low",
+          risk_level: "low" as const,
           completion_probability: 95
         }));
 
