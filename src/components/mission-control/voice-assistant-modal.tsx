@@ -100,7 +100,7 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
     
     // Clean JSON structures or brackets from text in case AI responds with them
     const cleanText = text
-      .replace(/\{.*\}/gs, "") // Remove json blocks
+      .replace(/\{[\s\S]*?\}/g, "") // Remove json blocks
       .replace(/[\[\]\{\}\*]/g, "") // Remove brackets
       .trim();
 
