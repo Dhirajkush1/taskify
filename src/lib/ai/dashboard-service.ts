@@ -131,7 +131,7 @@ export class DashboardService {
     // 1. KPI Calculations (Total, Done, Progress, Due Week)
     // ==========================================
     const totalTasks = tasks.length;
-    
+
     // Completed today check
     const completedToday = tasks.filter((t) => {
       if (t.status !== "done" || !t.updated_at) return false;
@@ -152,7 +152,7 @@ export class DashboardService {
       completedToday,
       inProgress,
       upcomingDeadlines: dueThisWeek,
-      streak: scoreRow?.details?.streak || 0
+      streak: ((scoreRow?.details as { streak?: number } | null)?.streak) || 0
     };
 
     // ==========================================
@@ -199,7 +199,9 @@ export class DashboardService {
     // ==========================================
     // 4. Execution Timeline
     // ==========================================
-    const executionTimeline = (planData?.today as string[]) || [];
+    //const executionTimeline = (planData?.today as string[]) || [];
+    const executionTimeline = ((planData as { today?: string[] } | null)?.today as string[]) || [];
+
 
     // ==========================================
     // 5. Upcoming Deadlines (Nearest Deadlines First)
@@ -234,7 +236,9 @@ export class DashboardService {
     // 7. Productivity Score
     // ==========================================
     let score = 85; // Fallback default
-    let streak = scoreRow?.details?.streak || 0;
+    // let streak = scoreRow?.details?.streak || 0;
+    let streak = (scoreRow?.details as { streak?: number } | null)?.streak || 0;
+
 
     if (scoreRow) {
       score = scoreRow.score;
@@ -243,7 +247,7 @@ export class DashboardService {
       const completionRate = completedTasks.length / tasks.length;
       const overdueCount = pendingTasks.filter((t) => t.deadline && new Date(t.deadline).getTime() < Date.now()).length;
       const focusTime = focusSessions.reduce((acc, f) => acc + (f.completed_minutes || 0), 0);
-      
+
       const rawScore = (completionRate * 60) + (focusTime > 0 ? 20 : 0) - (overdueCount * 10);
       score = Math.min(100, Math.max(20, Math.round(rawScore + 20)));
     }
@@ -327,7 +331,7 @@ export class DashboardService {
 
     if (history.length >= 2) {
       const daysShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      
+
       // Map completion trend
       history.slice(-7).forEach((h) => {
         const d = new Date(h.recorded_date);
