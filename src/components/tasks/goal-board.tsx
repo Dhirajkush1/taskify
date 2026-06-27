@@ -70,6 +70,7 @@ export function GoalBoard() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCreateGoal = async (e: React.FormEvent) => {

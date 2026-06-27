@@ -40,7 +40,7 @@ export default function CalendarPage() {
         const initialSchedule: ScheduledBlock[] = [];
         let currentHour = 9; // start at 9:00 AM
 
-        data.slice(0, 4).forEach((t, index) => {
+        (data as any[]).slice(0, 4).forEach((t: any, index: number) => {
           const durationMins = t.estimated_duration || 60;
           const durationHours = Math.round((durationMins / 60) * 2) / 2 || 1; // round to nearest 0.5
 
