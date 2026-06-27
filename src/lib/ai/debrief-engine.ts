@@ -1,0 +1,423 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createClient } from "@/lib/supabase/server";
+
+export interface DailyDebriefData {
+  summary: string;
+  metrics: {
+    completion_rate: number;
+    focus_time_minutes: number;
+    productivity_score: number;
+    current_streak: number;
+  };
+  completed_tasks: string[];
+  delayed_tasks: string[];
+  improvements: string[];
+  tomorrow_priorities: string[];
+  tomorrow_probability: number;
+  best_achievement: string;
+  missed_opportunities: string[];
+}
+
+export interface WeeklyReflectionData {
+  start_date: string;
+  end_date: string;
+  reflection_text: string;
+  metrics: {
+    completion_rate: number;
+    best_working_day: string;
+    best_working_hours: string;
+    most_delayed_category: string;
+  };
+  weekly_wins: string[];
+  focus_trends: Array<{ date: string; minutes: number }>;
+  burnout_trend: Array<{ date: string; score: number }>;
+  coaching_advice: string;
+  suggested_changes: string[];
+}
+
+export class DebriefEngine {
+  private static getGenAI() {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+    return new GoogleGenerativeAI(apiKey);
+  }
+
+  /**
+   * Generates or fetches the daily debrief for a user on a specific date.
+   */
+  static async getOrCreateDailyDebrief(userId: string, dateStr?: string): Promise<DailyDebriefData | null> {
+    const supabase = await createClient();
+    const targetDateStr = dateStr || new Date().toISOString().split("T")[0];
+
+    // 1. Check if daily debrief already exists
+    const { data: existing } = await supabase
+      .from("daily_debriefs")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("debrief_date", targetDateStr)
+      .maybeSingle();
+
+    if (existing) {
+      return {
+        summary: existing.summary,
+        metrics: existing.metrics,
+        completed_tasks: existing.completed_tasks,
+        delayed_tasks: existing.delayed_tasks,
+        improvements: existing.improvements,
+        tomorrow_priorities: existing.tomorrow_priorities,
+        tomorrow_probability: existing.tomorrow_probability,
+        best_achievement: existing.best_achievement,
+        missed_opportunities: existing.missed_opportunities
+      };
+    }
+
+    // 2. Query actual user records for the day to formulate the debrief
+    const { data: tasks } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", userId);
+
+    const { data: focusSessions } = await supabase
+      .from("focus_sessions")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("created_at", `${targetDateStr}T00:00:00Z`);
+
+    const { data: memory } = await supabase
+      .from("ai_memory")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const { data: settings } = await supabase
+      .from("settings")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const allTasks = tasks || [];
+    const sessions = focusSessions || [];
+    const userMemory = memory || {};
+    const userSettings = settings || {};
+
+    const completedToday = allTasks.filter(
+      (t) => t.status === "done" && t.updated_at && t.updated_at.startsWith(targetDateStr)
+    );
+    const delayedToday = allTasks.filter(
+      (t) => t.status !== "done" && t.deadline && t.deadline.startsWith(targetDateStr)
+    );
+
+    const focusMinutes = sessions.reduce((acc, s) => acc + (s.duration_minutes || 0), 0);
+    const totalToday = completedToday.length + delayedToday.length;
+    const completionRate = totalToday > 0 ? Math.round((completedToday.length / totalToday) * 100) : 100;
+
+    const genAI = this.getGenAI();
+    if (!genAI) {
+      console.warn("Gemini API key missing for DebriefEngine.");
+      return null;
+    }
+
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const context = {
+        date: targetDateStr,
+        userPreferences: {
+          memory: userMemory.memory_data || {},
+          working_hours: userSettings.preferred_work_hours || "9:00 - 17:00"
+        },
+        todayCompleted: completedToday.map((t) => t.title),
+        todayDelayed: delayedToday.map((t) => t.title),
+        focusMinutes,
+        completionRate
+      };
+
+      const prompt = `You are Clutch, the personalized AI Productivity Companion. 
+Your goal is to generate a highly personal, insightful Daily Debrief summarizing the user's productivity today:
+
+Today's context:
+${JSON.stringify(context, null, 2)}
+
+Create a summary that feels deeply encouraging and personalized. Rather than just listing numbers, analyze their working habits, praise their completed tasks, point out missed opportunities or delayed items gently, highlight their best achievement of the day, and map out their priorities for tomorrow.
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "summary": "Personal, conversational, and motivating 2-3 sentence daily summary",
+  "best_achievement": "Name of their single most significant win of the day",
+  "tomorrow_probability": integer (0-100, predicted success probability for tomorrow),
+  "tomorrow_priorities": ["Priority task 1", "Priority task 2"],
+  "improvements": ["Specific improvement recommendation 1", "Specific improvement recommendation 2"],
+  "missed_opportunities": ["Gently noted missed opportunity or delayed task context"],
+  "metrics": {
+    "completion_rate": integer,
+    "focus_time_minutes": integer,
+    "productivity_score": integer (0-100 rating of the day),
+    "current_streak": integer (streak value)
+  }
+}
+
+Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const parsed = JSON.parse(cleaned);
+
+      const debriefData: DailyDebriefData = {
+        summary: parsed.summary || "You locked in solid focus today! Keep pushing forward.",
+        best_achievement: parsed.best_achievement || "Establishing momentum",
+        tomorrow_probability: Number(parsed.tomorrow_probability) || 85,
+        tomorrow_priorities: parsed.tomorrow_priorities || [],
+        improvements: parsed.improvements || [],
+        missed_opportunities: parsed.missed_opportunities || [],
+        metrics: {
+          completion_rate: completionRate,
+          focus_time_minutes: focusMinutes,
+          productivity_score: parsed.metrics?.productivity_score || 80,
+          current_streak: parsed.metrics?.current_streak || 1
+        }
+      };
+
+      // Save to database
+      await supabase
+        .from("daily_debriefs")
+        .upsert({
+          user_id: userId,
+          debrief_date: targetDateStr,
+          summary: debriefData.summary,
+          metrics: debriefData.metrics,
+          completed_tasks: completedToday.map((t) => t.title),
+          delayed_tasks: delayedToday.map((t) => t.title),
+          improvements: debriefData.improvements,
+          tomorrow_priorities: debriefData.tomorrow_priorities,
+          tomorrow_probability: debriefData.tomorrow_probability,
+          best_achievement: debriefData.best_achievement,
+          missed_opportunities: debriefData.missed_opportunities,
+          created_at: new Date().toISOString()
+        }, { onConflict: "user_id,debrief_date" });
+
+      // Log event
+      await supabase.from("activity_logs").insert({
+        user_id: userId,
+        action_type: "DailyDebriefGenerated",
+        metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score }
+      });
+
+      // Proactive Telegram Daily Debrief
+      try {
+        const { data: account } = await supabase
+          .from("telegram_accounts")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        const { data: prefs } = await supabase
+          .from("notification_preferences")
+          .select("*")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (account && account.chat_id && (prefs?.telegram_enabled !== false) && (prefs?.daily_debrief_enabled !== false)) {
+          const { TelegramBotService } = await import("@/lib/telegram/bot-service");
+          
+          await TelegramBotService.sendDailyDebrief(account.chat_id, {
+            completionRate: debriefData.metrics.completion_rate,
+            focusMinutes: debriefData.metrics.focus_time_minutes,
+            summary: debriefData.summary,
+            priorities: debriefData.tomorrow_priorities,
+            streak: debriefData.metrics.current_streak
+          });
+        }
+      } catch (telegramErr) {
+        console.error("[DebriefEngine] Failed to dispatch Telegram daily debrief:", telegramErr);
+      }
+
+      return debriefData;
+    } catch (error) {
+      console.error("Error in getOrCreateDailyDebrief:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Generates or fetches the weekly reflection.
+   */
+  static async getOrCreateWeeklyReflection(userId: string): Promise<WeeklyReflectionData | null> {
+    const supabase = await createClient();
+
+    // 1. Calculate date range (last 7 days)
+    const today = new Date();
+    const endDateStr = today.toISOString().split("T")[0];
+    const startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const startDateStr = startDate.toISOString().split("T")[0];
+
+    // Check if reflection exists for the week
+    const { data: existing } = await supabase
+      .from("weekly_reflections")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("start_date", startDateStr)
+      .maybeSingle();
+
+    if (existing) {
+      return {
+        start_date: existing.start_date,
+        end_date: existing.end_date,
+        reflection_text: existing.reflection_text,
+        metrics: existing.metrics,
+        weekly_wins: existing.weekly_wins,
+        focus_trends: existing.focus_trends,
+        burnout_trend: existing.burnout_trend,
+        coaching_advice: existing.coaching_advice,
+        suggested_changes: existing.suggested_changes
+      };
+    }
+
+    // 2. Fetch weekly history logs
+    const { data: history } = await supabase
+      .from("productivity_analytics_history")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("recorded_date", startDateStr)
+      .lte("recorded_date", endDateStr);
+
+    const historyLogs = history || [];
+
+    const focusTrends = historyLogs.map((h) => ({
+      date: h.recorded_date,
+      minutes: h.focus_time_minutes || 0
+    }));
+
+    const burnoutTrend = historyLogs.map((h) => ({
+      date: h.recorded_date,
+      score: h.stress_index || 0
+    }));
+
+    // Formulate weekly analytics using Gemini
+    const genAI = this.getGenAI();
+    if (!genAI) {
+      console.warn("Gemini API key missing for weekly reflection.");
+      return null;
+    }
+
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const context = {
+        startDate: startDateStr,
+        endDate: endDateStr,
+        logs: historyLogs.map((h) => ({
+          date: h.recorded_date,
+          completed: h.tasks_completed_count,
+          focus_minutes: h.focus_time_minutes,
+          stress: h.stress_index
+        }))
+      };
+
+      const prompt = `You are Clutch, the premier AI productivity advisor.
+Generate a Weekly Reflection summarizing the user's performance and wellness over the past 7 days.
+
+Weekly logs:
+${JSON.stringify(context, null, 2)}
+
+Provide a deeply analytical, coaching-oriented reflection. Detail their weekly wins, identify their best working day and hours, call out burnout trends, and outline suggested structural changes.
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "reflection_text": "A comprehensive weekly analysis and performance summary (2-3 paragraphs)",
+  "coaching_advice": "Actionable coaching and habit modification advice",
+  "weekly_wins": ["Win 1", "Win 2", "Win 3"],
+  "suggested_changes": ["Structural change 1", "Structural change 2"],
+  "metrics": {
+    "completion_rate": integer (average completion rate),
+    "best_working_day": "e.g. Wednesday",
+    "best_working_hours": "e.g. 10:00 - 12:00",
+    "most_delayed_category": "e.g. Study / Coding"
+  }
+}
+
+Do not wrap in markdown or add conversational text. Return raw JSON.`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const parsed = JSON.parse(cleaned);
+
+      const reflectionData: WeeklyReflectionData = {
+        start_date: startDateStr,
+        end_date: endDateStr,
+        reflection_text: parsed.reflection_text || "You maintained a highly consistent work rate this week.",
+        coaching_advice: parsed.coaching_advice || "Schedule regular focus breaks to prevent fatigue buildup.",
+        weekly_wins: parsed.weekly_wins || [],
+        suggested_changes: parsed.suggested_changes || [],
+        focus_trends: focusTrends,
+        burnout_trend: burnoutTrend,
+        metrics: {
+          completion_rate: parsed.metrics?.completion_rate || 80,
+          best_working_day: parsed.metrics?.best_working_day || "Tuesday",
+          best_working_hours: parsed.metrics?.best_working_hours || "09:00 - 11:00",
+          most_delayed_category: parsed.metrics?.most_delayed_category || "General"
+        }
+      };
+
+      // Save to database
+      await supabase
+        .from("weekly_reflections")
+        .upsert({
+          user_id: userId,
+          start_date: startDateStr,
+          end_date: endDateStr,
+          reflection_text: reflectionData.reflection_text,
+          metrics: reflectionData.metrics,
+          weekly_wins: reflectionData.weekly_wins,
+          focus_trends: reflectionData.focus_trends,
+          burnout_trend: reflectionData.burnout_trend,
+          coaching_advice: reflectionData.coaching_advice,
+          suggested_changes: reflectionData.suggested_changes,
+          created_at: new Date().toISOString()
+        }, { onConflict: "user_id,start_date" });
+
+      // Log event
+      await supabase.from("activity_logs").insert({
+        user_id: userId,
+        action_type: "WeeklyReflectionGenerated",
+        metadata: { start: startDateStr, end: endDateStr }
+      });
+
+      // Proactive Telegram Weekly Reflection
+      try {
+        const { data: account } = await supabase
+          .from("telegram_accounts")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        const { data: prefs } = await supabase
+          .from("notification_preferences")
+          .select("*")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (account && account.chat_id && (prefs?.telegram_enabled !== false) && (prefs?.weekly_reflection_enabled !== false)) {
+          const { TelegramBotService } = await import("@/lib/telegram/bot-service");
+          
+          await TelegramBotService.sendWeeklyReflection(account.chat_id, {
+            avgCompletionRate: reflectionData.metrics.completion_rate,
+            peakHours: reflectionData.metrics.best_working_hours,
+            coachingTip: reflectionData.coaching_advice,
+            wins: reflectionData.weekly_wins
+          });
+        }
+      } catch (telegramErr) {
+        console.error("[DebriefEngine] Failed to dispatch Telegram weekly reflection:", telegramErr);
+      }
+
+      return reflectionData;
+    } catch (error) {
+      console.error("Error in getOrCreateWeeklyReflection:", error);
+      return null;
+    }
+  }
+}
