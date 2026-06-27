@@ -44,34 +44,6 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
       return 0;
     });
 
-  // Reset time when preset changes
-  useEffect(() => {
-    if (!isRunning) {
-      setTimeLeft(durationPreset * 60);
-    }
-  }, [durationPreset, isRunning]);
-
-  // Timer tick down
-  useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleTimerFinish();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning, handleTimerFinish]);
-
   // Helper to play synthesized beep/chime using Web Audio API (no external asset dependencies!)
   const playSynthesizedChime = () => {
     try {
@@ -163,6 +135,34 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
       if (onSessionComplete) onSessionComplete();
     }
   }, [selectedTaskId, durationPreset, supabase, onSessionComplete]);
+
+  // Reset time when preset changes
+  useEffect(() => {
+    if (!isRunning) {
+      setTimeLeft(durationPreset * 60);
+    }
+  }, [durationPreset, isRunning]);
+
+  // Timer tick down
+  useEffect(() => {
+    if (isRunning) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            handleTimerFinish();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isRunning, handleTimerFinish]);
 
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
