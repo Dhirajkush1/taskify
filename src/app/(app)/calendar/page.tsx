@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Calendar as CalendarIcon, Clock, Sparkles, Loader2, Play, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { motion } from "framer-motion";
+import { Calendar as CalendarIcon, Clock, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { triggerConfetti } from "@/components/shared/confetti-canvas";
 import { toast } from "sonner";
@@ -41,8 +41,9 @@ export default function CalendarPage() {
       if (data && data.length > 0) {
         const initialSchedule: ScheduledBlock[] = [];
         let currentHour = 9; // start at 9:00 AM
+        const typedTasks: Task[] = data;
 
-        data.slice(0, 4).forEach((t, index) => {
+        typedTasks.slice(0, 4).forEach((t) => {
           const durationMins = t.estimated_duration || 60;
           const durationHours = Math.round((durationMins / 60) * 2) / 2 || 1; // round to nearest 0.5
 
@@ -117,7 +118,7 @@ export default function CalendarPage() {
         triggerConfetti();
         toast.success("AI auto-scheduling completed! Calendar optimized.");
       }
-    } catch (e) {
+    } catch {
       toast.error("Auto-scheduling failed. Try again.");
     } finally {
       setScheduling(false);
