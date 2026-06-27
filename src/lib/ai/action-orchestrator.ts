@@ -106,7 +106,7 @@ export class ActionOrchestrator {
               title: g.title,
               description: g.description || null,
               target_date: g.target_date || null,
-              status: "active",
+              status: "active" as const,
             })
             .select()
             .single();
@@ -155,7 +155,7 @@ export class ActionOrchestrator {
               description: t.description || null,
               deadline: t.deadline || null,
               priority: t.priority || "medium",
-              status: "todo",
+              status: "todo" as const,
               estimated_duration: t.estimated_duration || null,
               completion_percentage: 0,
               priority_score: t.priority_score || 0,
@@ -275,7 +275,6 @@ export class ActionOrchestrator {
         }
       }
 
-      // 5. Process Execution Plans (Today's, Tomorrow's, Weekly schedule blocks)
       if (payload.execution_plan) {
         console.log(`[ActionOrchestrator] Saving execution plan...`);
         const { error: planError } = await supabase
@@ -283,8 +282,8 @@ export class ActionOrchestrator {
           .upsert(
             {
               user_id: userId,
-              plan_type: "daily",
-              plan_data: payload.execution_plan,
+              plan_type: "daily" as const,
+              plan_data: payload.execution_plan as any,
               updated_at: new Date().toISOString(),
             },
             { onConflict: "user_id, plan_type" }
@@ -299,8 +298,8 @@ export class ActionOrchestrator {
 
           const { error: insertError } = await supabase.from("execution_plans").insert({
             user_id: userId,
-            plan_type: "daily",
-            plan_data: payload.execution_plan,
+            plan_type: "daily" as const,
+            plan_data: payload.execution_plan as any,
           });
 
           if (insertError) throw new Error(`Execution plan save failed: ${insertError.message}`);

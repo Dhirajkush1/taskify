@@ -555,7 +555,7 @@ async function handleCallbackQuery(callbackQuery: any) {
         // Mark task as done
         const { error } = await supabaseAdmin
           .from("tasks")
-          .update({ status: "done", completion_percentage: 100 })
+          .update({ status: "done" as const, completion_percentage: 100 })
           .eq("id", targetId)
           .eq("user_id", userId);
 
