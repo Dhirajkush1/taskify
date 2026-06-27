@@ -480,7 +480,7 @@ export function AutonomousWidgets({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {dailyDebrief.tomorrow_priorities && dailyDebrief.tomorrow_priorities.length > 0 && (
                           <div className="bg-neutral-950/40 p-3.5 rounded-xl border border-neutral-900">
-                            <span className="text-[9px] font-black text-neutral-500 uppercase block mb-2">Tomorrow's Priorities</span>
+                            <span className="text-[9px] font-black text-neutral-500 uppercase block mb-2">Tomorrow&apos;s Priorities</span>
                             <ul className="space-y-1.5">
                               {dailyDebrief.tomorrow_priorities.map((item, idx) => (
                                 <li key={idx} className="text-xs text-neutral-300 flex items-center gap-2">
@@ -533,7 +533,7 @@ export function AutonomousWidgets({
                       </div>
 
                       <div className="border-t border-neutral-900 pt-3">
-                        <span className="text-[9px] font-black text-neutral-500 uppercase block mb-1">Tomorrow's Prediction</span>
+                        <span className="text-[9px] font-black text-neutral-500 uppercase block mb-1">Tomorrow&apos;s Prediction</span>
                         <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
                           <TrendingUp className="w-4 h-4" /> {dailyDebrief.tomorrow_probability}% Success Probability
                         </span>
@@ -1079,7 +1079,7 @@ export function AutonomousWidgets({
 
             <div className="border-t pt-3 space-y-2.5" style={{ borderColor: "var(--border)" }}>
               <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest block">
-                Today's Micro-Wins Checklist
+                Today&apos;s Micro-Wins Checklist
               </span>
               
               <ul className="flex flex-col gap-2">

@@ -226,7 +226,7 @@ export default function CalendarPage() {
           >
             <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: "var(--border)" }}>
               <span className="text-xs font-bold text-neutral-200 flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-violet-400" /> Today's Work Blocks
+                <CalendarIcon className="w-4 h-4 text-violet-400" /> Today&apos;s Work Blocks
               </span>
               <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded-full text-neutral-400 font-bold">
                 Hour-Blocked

@@ -288,7 +288,7 @@ export default function SettingsPage() {
           <div>
             <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Active Personality</p>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Switching personalities alters Clutch AI's tone, scheduling focus, and coaching style.
+              Switching personalities alters Clutch AI&apos;s tone, scheduling focus, and coaching style.
             </p>
           </div>
 

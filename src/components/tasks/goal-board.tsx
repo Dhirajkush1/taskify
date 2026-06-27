@@ -293,7 +293,7 @@ export function GoalBoard() {
         <div className="rounded-2xl border border-dashed border-neutral-800 p-8 text-center flex flex-col items-center justify-center gap-3">
           <Target className="w-10 h-10 text-neutral-600" />
           <p className="text-xs text-neutral-400 max-w-xs leading-relaxed">
-            You haven't added any goals yet. Build a strategic vision by creating your first Goal!
+            You haven&apos;t added any goals yet. Build a strategic vision by creating your first Goal!
           </p>
         </div>
       ) : (
