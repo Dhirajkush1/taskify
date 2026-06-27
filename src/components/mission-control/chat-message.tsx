@@ -368,7 +368,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* Today */}
                     <div className="flex flex-col gap-2">
-                      <span className="text-[10px] font-bold text-emerald-400 tracking-wider">TODAY'S MISSION</span>
+                      <span className="text-[10px] font-bold text-emerald-400 tracking-wider">TODAY&apos;S MISSION</span>
                       {metadata.execution_plan.today && metadata.execution_plan.today.length > 0 ? (
                         <ul className="flex flex-col gap-1.5 text-xs text-neutral-300">
                           {metadata.execution_plan.today.map((block: string, bIdx: number) => (
@@ -384,7 +384,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
                     {/* Tomorrow */}
                     <div className="flex flex-col gap-2">
-                      <span className="text-[10px] font-bold text-violet-400 tracking-wider">TOMORROW'S PLAN</span>
+                      <span className="text-[10px] font-bold text-violet-400 tracking-wider">TOMORROW&apos;S PLAN</span>
                       {metadata.execution_plan.tomorrow && metadata.execution_plan.tomorrow.length > 0 ? (
                         <ul className="flex flex-col gap-1.5 text-xs text-neutral-300">
                           {metadata.execution_plan.tomorrow.map((block: string, bIdx: number) => (

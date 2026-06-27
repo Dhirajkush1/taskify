@@ -248,7 +248,7 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
                   <Sparkles className="w-3.5 h-3.5" /> Conversational AI Coach
                 </span>
                 <p className="text-sm font-semibold text-neutral-300 min-h-6 italic">
-                  "{transcript || "Tap mic and speak..."}"
+                  &quot;{transcript || "Tap mic and speak..."}&quot;
                 </p>
               </div>
 
