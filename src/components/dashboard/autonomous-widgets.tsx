@@ -474,7 +474,7 @@ export function AutonomousWidgets({
                     <div className="md:col-span-2 space-y-3">
                       <div className="bg-white/5 p-4 rounded-xl border border-neutral-900">
                         <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest block mb-1">Clutch Companion Executive Summary</span>
-                        <p className="text-xs text-neutral-200 leading-relaxed font-medium">"{dailyDebrief.summary}"</p>
+                        <p className="text-xs text-neutral-200 leading-relaxed font-medium">&quot;{dailyDebrief.summary}&quot;</p>
                       </div>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -612,7 +612,7 @@ export function AutonomousWidgets({
 
                       <div className="border-t border-neutral-900 pt-3">
                         <span className="text-[9px] font-black text-neutral-500 uppercase block mb-1">AI Coaching Strategy</span>
-                        <p className="text-[11px] text-neutral-300 leading-relaxed italic">"{weeklyReflection.coaching_advice}"</p>
+                        <p className="text-[11px] text-neutral-300 leading-relaxed italic">&quot;{weeklyReflection.coaching_advice}&quot;</p>
                       </div>
                     </div>
                   </div>
@@ -787,7 +787,7 @@ export function AutonomousWidgets({
                   <div className="space-y-1">
                     <span className="text-[9px] text-violet-400 font-bold block uppercase">AI Simulator Reasoning</span>
                     <p className="text-[11px] text-neutral-300 leading-relaxed font-medium">
-                      "{simulationResult.reasoning}"
+                      &quot;{simulationResult.reasoning}&quot;
                     </p>
                   </div>
 
@@ -1074,7 +1074,7 @@ export function AutonomousWidgets({
             </div>
 
             <p className="text-xs text-neutral-300 leading-relaxed italic">
-              "{burnoutScore.advice}"
+              &quot;{burnoutScore.advice}&quot;
             </p>
 
             <div className="border-t pt-3 space-y-2.5" style={{ borderColor: "var(--border)" }}>
