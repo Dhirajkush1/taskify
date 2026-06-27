@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 import { ReminderService } from "./reminder-service";
 import { MemoryService } from "./memory-service";
 import { ProbabilityEngine } from "./probability-engine";
@@ -53,7 +54,7 @@ export class ActionOrchestrator {
   static async execute(
     userId: string,
     payload: OrchestratorActionPayload,
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     userMessageContent: string
   ) {
     console.log(`[ActionOrchestrator] Starting transaction for user ${userId}...`);

@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useMemo,
   type ReactNode,
 } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -23,7 +24,7 @@ const SupabaseContext = createContext<SupabaseContextValue>({
 export function SupabaseProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     const {

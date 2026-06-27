@@ -11,10 +11,12 @@ export function RealtimeSyncProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!user) return;
+  const userId = user?.id;
 
-    console.log("[RealtimeSync] Initializing database realtime subscription for user:", user.id);
+  useEffect(() => {
+    if (!userId) return;
+
+    console.log("[RealtimeSync] Initializing database realtime subscription for user:", userId);
     const supabase = createClient();
 
     // Subscribe to all public postgres database changes.
@@ -49,7 +51,7 @@ export function RealtimeSyncProvider({ children }: { children: ReactNode }) {
       console.log("[RealtimeSync] Unsubscribing from realtime changes...");
       supabase.removeChannel(channel);
     };
-  }, [user, router, queryClient]);
+  }, [userId, router, queryClient]);
 
   return <>{children}</>;
 }

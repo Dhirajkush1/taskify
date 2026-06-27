@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, X, Sparkles, Volume2, VolumeX, Loader2 } from "lucide-react";
 
@@ -19,6 +19,35 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
 
   const recognitionRef = useRef<any>(null);
   const speechUttRef = useRef<SpeechSynthesisUtterance | null>(null);
+  
+  const handleVoiceSubmitRef = useRef<(queryText: string) => Promise<void>>(null as any);
+
+  const stopSpeaking = useCallback(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  }, []);
+
+  const startListening = useCallback(() => {
+    stopSpeaking();
+    setAiResponse("");
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        // Already started
+      }
+    } else {
+      setTranscript("Speech recognition not supported in this browser.");
+    }
+  }, [stopSpeaking]);
+
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  }, []);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -40,7 +69,9 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
         rec.onresult = (event: any) => {
           const text = event.results[0][0].transcript;
           setTranscript(text);
-          handleVoiceSubmit(text);
+          if (handleVoiceSubmitRef.current) {
+            handleVoiceSubmitRef.current(text);
+          }
         };
 
         rec.onerror = (err: any) => {
@@ -60,34 +91,7 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
     return () => {
       stopSpeaking();
     };
-  }, []);
-
-  const startListening = () => {
-    stopSpeaking();
-    setAiResponse("");
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.start();
-      } catch (e) {
-        // Already started
-      }
-    } else {
-      setTranscript("Speech recognition not supported in this browser.");
-    }
-  };
-
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-  };
-
-  const stopSpeaking = () => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-    }
-  };
+  }, [stopSpeaking]);
 
   const speakText = (text: string) => {
     if (muted || typeof window === "undefined" || !window.speechSynthesis) return;
@@ -148,24 +152,9 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
 
       if (!res.ok) throw new Error("API call failed");
 
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No reader");
-
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
-        
-        // Hide json strings if returned
-        const cleaned = accumulated
-          .replace(/\{.*\}/gs, "")
-          .replace(/[\[\]\{\}\"\:]/g, "")
-          .trim();
-        setAiResponse(cleaned);
-      }
+      const data = await res.json();
+      const accumulated = data.chat_response || "Action compiled successfully.";
+      setAiResponse(accumulated);
 
       // Speak response aloud
       speakText(accumulated);
@@ -177,15 +166,18 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
     }
   };
 
+  handleVoiceSubmitRef.current = handleVoiceSubmit;
+
   useEffect(() => {
     if (isOpen) {
       // Auto trigger listening on open
-      setTimeout(() => startListening(), 500);
+      const timer = setTimeout(() => startListening(), 500);
+      return () => clearTimeout(timer);
     } else {
       stopListening();
       stopSpeaking();
     }
-  }, [isOpen]);
+  }, [isOpen, startListening, stopListening, stopSpeaking]);
 
   return (
     <AnimatePresence>

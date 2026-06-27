@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar as CalendarIcon, Clock, Sparkles, Loader2, Play, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { triggerConfetti } from "@/components/shared/confetti-canvas";
 import { toast } from "sonner";
+import type { Task } from "@/types/app.types";
 
 interface ScheduledBlock {
   id: string;
@@ -17,13 +18,14 @@ interface ScheduledBlock {
 }
 
 export default function CalendarPage() {
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [schedule, setSchedule] = useState<ScheduledBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [scheduling, setScheduling] = useState(false);
-  const supabase = createClient();
+  
+  const supabase = useMemo(() => createClient(), []);
 
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -40,7 +42,7 @@ export default function CalendarPage() {
         const initialSchedule: ScheduledBlock[] = [];
         let currentHour = 9; // start at 9:00 AM
 
-        (data as any[]).slice(0, 4).forEach((t: any, index: number) => {
+        data.slice(0, 4).forEach((t, index) => {
           const durationMins = t.estimated_duration || 60;
           const durationHours = Math.round((durationMins / 60) * 2) / 2 || 1; // round to nearest 0.5
 
@@ -60,11 +62,11 @@ export default function CalendarPage() {
       }
     }
     setLoading(false);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     loadTasks();
-  }, []);
+  }, [loadTasks]);
 
   // AI Auto-Scheduling Trigger
   const handleAutoSchedule = async () => {
