@@ -95,7 +95,7 @@ export class RescueEngine {
         .upsert({
           user_id: userId,
           is_active: false,
-          emergency_action_plan: []
+          emergency_action_plan: [] as any
         }, { onConflict: "user_id" });
       return null;
     }
@@ -176,7 +176,7 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
           recovery_probability: planData.recovery_probability,
           current_risk: planData.current_risk,
           estimated_finish_time: planData.estimated_finish_time,
-          emergency_action_plan: planData.emergency_action_plan,
+          emergency_action_plan: planData.emergency_action_plan as any,
           remaining_focus_sessions: planData.remaining_focus_sessions,
           activated_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -185,12 +185,13 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
       // Log event in activity_logs
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "RescueModeActivated",
+        action: "RescueModeActivated",
+        entity_type: "system",
         metadata: {
           reason: triggerReason,
           recovery_probability: planData.recovery_probability,
           critical_task: criticalTask?.title
-        }
+        } as any
       });
 
       // Proactive Telegram Rescue Notification
@@ -241,13 +242,14 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
         user_id: userId,
         is_active: false,
         emergency_task_id: null,
-        emergency_action_plan: []
+        emergency_action_plan: [] as any
       }, { onConflict: "user_id" });
 
     await supabase.from("activity_logs").insert({
       user_id: userId,
-      action_type: "RescueModeDeactivated",
-      metadata: { timestamp: new Date().toISOString() }
+      action: "RescueModeDeactivated",
+      entity_type: "system",
+      metadata: { timestamp: new Date().toISOString() } as any
     });
   }
 
