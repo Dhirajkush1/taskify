@@ -9,15 +9,15 @@ import { TaskList } from "@/components/tasks/task-list";
 import { TaskFilters } from "@/components/tasks/task-filters";
 import { TaskForm } from "@/components/tasks/task-form";
 import { GoalBoard } from "@/components/tasks/goal-board";
-import type { Task } from "@/types/app.types";
+import type { Task, TaskStatus, TaskPriority } from "@/types/app.types";
 
 export default function TasksPage() {
   const [activeTab, setActiveTab] = useState<"board" | "goals">("board");
   const [filters, setFilters] = useState<{
-    status?: string;
-    priority?: string;
+    status?: TaskStatus;
+    priority?: TaskPriority;
     search?: string;
-  }>({});
+  }>({}); 
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
