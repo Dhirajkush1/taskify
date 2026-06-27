@@ -1,11 +1,11 @@
-import type { Task, TaskInsert, TaskUpdate } from "@/types/app.types";
+import type { Task, TaskInsert, TaskUpdate, TaskStatus, TaskPriority } from "@/types/app.types";
 import { createClient } from "@/lib/supabase/client";
 
 export async function fetchTasks(
   userId: string,
   filters?: {
-    status?: string;
-    priority?: string;
+    status?: TaskStatus;
+    priority?: TaskPriority;
     search?: string;
   }
 ): Promise<Task[]> {

@@ -9,15 +9,15 @@ import {
   completeTask,
   archiveTask,
 } from "@/lib/api/tasks";
-import type { TaskInsert, TaskUpdate } from "@/types/app.types";
+import type { TaskInsert, TaskUpdate, TaskStatus, TaskPriority } from "@/types/app.types";
 import { toast } from "sonner";
 import { useSupabase } from "@/providers/supabase-provider";
 
 export const TASKS_QUERY_KEY = ["tasks"] as const;
 
 export function useTasks(filters?: {
-  status?: string;
-  priority?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
   search?: string;
 }) {
   const { user } = useSupabase();
