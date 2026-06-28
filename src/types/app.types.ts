@@ -12,6 +12,8 @@ export type Task = Database["public"]["Tables"]["tasks"]["Row"];
 export type Subtask = Database["public"]["Tables"]["subtasks"]["Row"];
 export type ActivityLog = Database["public"]["Tables"]["activity_logs"]["Row"];
 export type Settings = Database["public"]["Tables"]["settings"]["Row"];
+export type Reminder = Database["public"]["Tables"]["reminders"]["Row"];
+export type Habit = Database["public"]["Tables"]["habits"]["Row"];
 
 // Insert/Update types
 export type TaskInsert = Database["public"]["Tables"]["tasks"]["Insert"];

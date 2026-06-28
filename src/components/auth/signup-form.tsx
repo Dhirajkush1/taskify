@@ -36,11 +36,17 @@ export function SignupForm() {
   } = useForm<SignupForm>({ resolver: zodResolver(signupSchema) });
 
   const onSubmit = async (data: SignupForm) => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const locale = navigator.language || "en-US";
     const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
-        data: { full_name: data.fullName },
+        data: { 
+          full_name: data.fullName,
+          timezone,
+          locale
+        },
         emailRedirectTo: `${window.location.origin}/api/auth/callback`,
       },
     });

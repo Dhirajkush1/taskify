@@ -396,7 +396,7 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
   let userContent = message.text || "";
   let filePart: any = null;
 
-  // 1. Handle Voice Messages (Multimodal Speech-to-Text)
+  // 1. Handle Voice Messages (Speech-to-Text)
   if (message.voice) {
     const voiceFile = await TelegramBotService.downloadFile(message.voice.file_id);
     if (voiceFile) {
@@ -410,7 +410,6 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
 
   // 2. Handle Photos
   else if (message.photo && message.photo.length > 0) {
-    // Take largest photo resolution
     const photo = message.photo[message.photo.length - 1];
     const photoFile = await TelegramBotService.downloadFile(photo.file_id);
     if (photoFile) {
@@ -460,111 +459,16 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
       convo = newConvo;
     }
 
-    // B. Save User Message to Database
-    const { data: userMsg } = await supabaseAdmin
-      .from("messages")
-      .insert({
-        conversation_id: convo.id,
-        role: "user" as const,
-        content: message.text || (message.voice ? "[Voice Note]" : "[Attachment]"),
-        source: "telegram" as const
-      })
-      .select()
-      .single();
-
-    // C. Intercept What-If Simulator command in Telegram
-    if (userContent.toLowerCase().includes("what if") || userContent.toLowerCase().includes("what-if")) {
-      const sim = await SimulationEngine.runSimulation(userId, userContent);
-      if (!sim) {
-        await TelegramBotService.sendMessage(chatId, "⚠️ Failed to run the What-If simulation. Please try again.");
-        return;
-      }
-      const simResponse = `
-🔮 <b>What-If Decision Simulation</b>
-
-🧠 <b>Decision:</b> "${userContent}"
-
-📈 <b>Probability Change:</b> ${sim.current_completion_probability}% ➔ <b>${sim.simulated_completion_probability}%</b>
-⚠️ <b>Risk Level:</b> <b>${sim.simulated_deadline_risk.toUpperCase()}</b>
-🔋 <b>Workload Impact:</b> <b>${sim.workload_impact}</b>
-
-📝 <b>Clutch AI Reasoning:</b>
-<i>${sim.reasoning}</i>
-
-💡 <b>Mitigation Plan:</b>
-${sim.suggested_alternative}
-`;
-      
-      // Save assistant response
-      await supabaseAdmin.from("messages").insert({
-        conversation_id: convo.id,
-        role: "assistant" as const,
-        content: simResponse,
-        source: "telegram" as const
-      });
-
-      await TelegramBotService.sendMessage(chatId, simResponse);
-      return;
-    }
-
-    // D. Compile Rich Context
-    const context = await ContextBuilder.buildContext(userId, userContent);
-
-    // E. Invoke Gemini Model Synchronously
-    const today = new Date();
-    const todayStr = today.toISOString();
-    const dayOfWeek = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(today);
-    const basePrompt = AUTONOMOUS_SYSTEM_PROMPT(todayStr, dayOfWeek);
-
-    const systemPrompt = `${basePrompt}\n\n[CONTEXT]\n${context.promptContextString}\n\nIMPORTANT: The user is messaging from Telegram. Keep your 'chat_response' extremely clear, formatted in standard HTML tags (<b>, <i>, <code>, <a>), and reasonably concise. Do NOT return markdown format inside 'chat_response'.`;
-
-    const activeMessages: AIMessage[] = [];
-    if (filePart) {
-      activeMessages.push({
-        role: "user",
-        content: [
-          {
-            inlineData: {
-              data: filePart.base64Data,
-              mimeType: filePart.mimeType
-            }
-          },
-          { text: userContent }
-        ]
-      });
-    } else {
-      activeMessages.push({
-        role: "user",
-        content: userContent
-      });
-    }
-
-    const responseText = await AIClient.generateText(
-      activeMessages,
-      {
-        provider: "gemini",
-        model: "gemini-1.5-flash",
-        systemPrompt,
-        responseMimeType: "application/json"
-      }
-    );
-
-    // F. Parse AI Structured Response & Run Action Orchestrator
-    const parsedData = JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());
-
-    // Execute database transaction block!
-    await ActionOrchestrator.execute(userId, parsedData, supabaseAdmin, userContent);
-
-    // G. Save Assistant Message & Send Reply to Telegram
-    const replyText = parsedData.chat_response;
-    await supabaseAdmin.from("messages").insert({
-      conversation_id: convo.id,
-      role: "assistant" as const,
-      content: replyText,
-      source: "telegram" as const
+    // B. Run Unified ActionOrchestrator pipeline
+    const parsedData = await ActionOrchestrator.processMessage(userId, userContent, supabaseAdmin, {
+      fileAttachment: filePart || undefined,
+      source: "telegram",
+      conversationId: convo.id
     });
 
-    // If Rescue Mode was triggered during execution, notify!
+    const replyText = parsedData.chat_response;
+
+    // C. Check if Rescue Mode was triggered during execution, notify!
     const { data: rescuePlan } = await supabaseAdmin
       .from("rescue_plans")
       .select("*")
@@ -572,7 +476,7 @@ ${sim.suggested_alternative}
       .eq("is_active", true)
       .maybeSingle();
 
-    if (rescuePlan && parsedData.chat_response.includes("Rescue Mode")) {
+    if (rescuePlan && (replyText.includes("RESCUE MODE") || replyText.includes("Rescue Mode"))) {
       const targetDeadline = rescuePlan.estimated_finish_time
         ? new Date(rescuePlan.estimated_finish_time).getTime()
         : Date.now() + 60 * 60 * 1000;
@@ -589,7 +493,7 @@ ${sim.suggested_alternative}
 
   } catch (err: any) {
     console.error("[TelegramWebhook] AI processing error:", err);
-    await TelegramBotService.sendMessage(chatId, `⚠️ <b>Transaction Aborted</b>\n\nI encountered a database or AI core synchronization issue. Your schedules have been safely rolled back. Please try again!`);
+    await TelegramBotService.sendMessage(chatId, `⚠️ <b>Transaction Aborted</b>\n\nI encountered a database or AI core synchronization issue: ${err.message || "Execution error"}. Your schedules have been safely rolled back. Please try again!`);
   }
 }
 

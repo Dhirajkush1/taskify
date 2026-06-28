@@ -142,7 +142,7 @@ export class ReminderService {
       const { data: reminders, error } = await supabase
         .from("reminders")
         .select("*, task:tasks(*)")
-        .eq("status", "pending")
+        .in("status", ["pending", "scheduled"])
         .lte("reminder_time", nowIso);
 
       if (error || !reminders || reminders.length === 0) return;
@@ -187,10 +187,10 @@ export class ReminderService {
             });
           }
 
-          // 2. Mark reminder as sent
+          // 2. Mark reminder as triggered
           await supabase
             .from("reminders")
-            .update({ status: "sent" as const, updated_at: new Date().toISOString() })
+            .update({ status: "triggered" as const, updated_at: new Date().toISOString() })
             .eq("id", r.id);
 
         } catch (dispatchErr) {

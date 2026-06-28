@@ -200,6 +200,14 @@ export interface Database {
           ai_suggestions_enabled: boolean;
           daily_summary_time: string | null;
           ai_personality: "friendly_coach" | "strict_coach" | "minimal_assistant" | "student_mentor" | "professional_planner";
+          timezone: string;
+          locale: string;
+          country: string;
+          working_hours_start: string;
+          working_hours_end: string;
+          week_start: number;
+          preferred_focus_hours_start: string;
+          preferred_focus_hours_end: string;
           updated_at: string;
         };
         Insert: {
@@ -210,6 +218,14 @@ export interface Database {
           ai_suggestions_enabled?: boolean;
           daily_summary_time?: string | null;
           ai_personality?: "friendly_coach" | "strict_coach" | "minimal_assistant" | "student_mentor" | "professional_planner";
+          timezone?: string;
+          locale?: string;
+          country?: string;
+          working_hours_start?: string;
+          working_hours_end?: string;
+          week_start?: number;
+          preferred_focus_hours_start?: string;
+          preferred_focus_hours_end?: string;
           updated_at?: string;
         };
         Update: {
@@ -218,6 +234,14 @@ export interface Database {
           ai_suggestions_enabled?: boolean;
           daily_summary_time?: string | null;
           ai_personality?: "friendly_coach" | "strict_coach" | "minimal_assistant" | "student_mentor" | "professional_planner";
+          timezone?: string;
+          locale?: string;
+          country?: string;
+          working_hours_start?: string;
+          working_hours_end?: string;
+          week_start?: number;
+          preferred_focus_hours_start?: string;
+          preferred_focus_hours_end?: string;
           updated_at?: string;
         };
         Relationships: [];
@@ -385,7 +409,7 @@ export interface Database {
           reminder_time: string;
           reminder_type: "specific_time" | "relative_time" | "recurring" | "deadline" | "smart";
           recurrence_pattern: string | null;
-          status: "pending" | "sent" | "cancelled";
+          status: "pending" | "scheduled" | "triggered" | "completed" | "expired" | "cancelled" | "archived";
           created_at: string;
           updated_at: string;
         };
@@ -397,7 +421,7 @@ export interface Database {
           reminder_time: string;
           reminder_type?: "specific_time" | "relative_time" | "recurring" | "deadline" | "smart";
           recurrence_pattern?: string | null;
-          status?: "pending" | "sent" | "cancelled";
+          status?: "pending" | "scheduled" | "triggered" | "completed" | "expired" | "cancelled" | "archived";
           created_at?: string;
           updated_at?: string;
         };
@@ -407,7 +431,7 @@ export interface Database {
           reminder_time?: string;
           reminder_type?: "specific_time" | "relative_time" | "recurring" | "deadline" | "smart";
           recurrence_pattern?: string | null;
-          status?: "pending" | "sent" | "cancelled";
+          status?: "pending" | "scheduled" | "triggered" | "completed" | "expired" | "cancelled" | "archived";
           updated_at?: string;
         };
         Relationships: [];
@@ -668,6 +692,39 @@ export interface Database {
         Update: {
           plan_type?: "daily" | "weekly";
           plan_data?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      habits: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          frequency: "daily" | "weekly" | "weekdays" | "weekends";
+          streak: number;
+          last_completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          description?: string | null;
+          frequency?: "daily" | "weekly" | "weekdays" | "weekends";
+          streak?: number;
+          last_completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          frequency?: "daily" | "weekly" | "weekdays" | "weekends";
+          streak?: number;
+          last_completed_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];
