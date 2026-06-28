@@ -38,7 +38,7 @@ export default function SettingsPage() {
     chatId: null,
     linkingCode: null,
     expiresAt: null,
-    botUsername: "ClutchAIBot",
+    botUsername: "TaskifyAI_bot",
     preferences: {
       telegram_enabled: true,
       daily_debrief_enabled: true,
@@ -72,7 +72,7 @@ export default function SettingsPage() {
             connected: false,
             linkingCode: data.linkingCode,
             expiresAt: data.expiresAt,
-            botUsername: data.botUsername || "ClutchAIBot"
+            botUsername: data.botUsername || "TaskifyAI_bot"
           }));
         }
       }
@@ -489,7 +489,7 @@ export default function SettingsPage() {
                     Connection Steps:
                   </p>
                   <ol className="list-decimal list-inside space-y-1 text-[11px] text-neutral-400 leading-relaxed">
-                    <li>Open our Telegram Bot: <span className="text-blue-400 font-semibold">@ClutchAIBot</span></li>
+                    <li>Open our Telegram Bot: <span className="text-blue-400 font-semibold">@{telegramStatus.botUsername}</span></li>
                     <li>Send your secure one-time linking code displayed below.</li>
                   </ol>
                 </div>
