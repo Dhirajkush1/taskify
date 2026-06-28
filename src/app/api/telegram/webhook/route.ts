@@ -27,39 +27,77 @@ export async function POST(request: NextRequest) {
     const update = await request.json();
     console.log("[TelegramWebhook] Received update:", JSON.stringify(update));
 
-    // 1. Handle Callback Queries (Button Clicks)
-    if (update.callback_query) {
-      await handleCallbackQuery(update.callback_query);
+    const message = update.message;
+    const callbackQuery = update.callback_query;
+    
+    const chatId = message?.chat?.id || callbackQuery?.message?.chat?.id;
+    const telegramUserId = message?.from?.id || callbackQuery?.from?.id;
+    const text = message?.text?.trim();
+
+    // 1. Identify User ID for logging
+    let userId: string | null = null;
+    let potentialCode: string | null = null;
+
+    if (text) {
+      const linkingCodeMatch = text.match(/^(?:CL-[A-Z2-9]{5})|(?:\/start\s+(CL-[A-Z2-9]{5}))$/i);
+      potentialCode = linkingCodeMatch ? (linkingCodeMatch[1] || linkingCodeMatch[0]).toUpperCase() : null;
+    }
+
+    if (telegramUserId) {
+      const { data: account } = await supabaseAdmin
+        .from("telegram_accounts")
+        .select("user_id")
+        .eq("telegram_user_id", telegramUserId)
+        .maybeSingle();
+      if (account?.user_id) {
+        userId = account.user_id;
+      }
+    }
+
+    if (!userId && potentialCode) {
+      const { data: account } = await supabaseAdmin
+        .from("telegram_accounts")
+        .select("user_id")
+        .eq("linking_code", potentialCode)
+        .maybeSingle();
+      if (account?.user_id) {
+        userId = account.user_id;
+      }
+    }
+
+    // Write structured webhook received log
+    if (userId) {
+      try {
+        await supabaseAdmin.from("activity_logs").insert({
+          user_id: userId,
+          action: "TelegramWebhookReceived",
+          entity_type: "telegram",
+          entity_id: chatId ? String(chatId) : null,
+          metadata: { update }
+        });
+      } catch (logErr) {
+        console.error("[TelegramWebhook] Failed to write webhook log to activity_logs:", logErr);
+      }
+    }
+
+    // 2. Handle Callback Queries (Button Clicks)
+    if (callbackQuery) {
+      await handleCallbackQuery(callbackQuery);
       return NextResponse.json({ ok: true });
     }
 
-    const message = update.message;
     if (!message) {
       return NextResponse.json({ ok: true });
     }
 
-    const chatId = message.chat.id;
-    const telegramUserId = message.from.id;
-    const text = message.text?.trim();
-
-    // 2. Handle Account Linking Flow (e.g. /start CL-8F2A or entering the code directly)
-    const linkingCodeMatch = text?.match(/^(?:CL-[A-Z2-9]{5})|(?:\/start\s+(CL-[A-Z2-9]{5}))$/i);
-    const potentialCode = linkingCodeMatch ? (linkingCodeMatch[1] || linkingCodeMatch[0]).toUpperCase() : null;
-
+    // 3. Handle Account Linking Flow (e.g. /start CL-8F2A or entering the code directly)
     if (potentialCode) {
       const success = await handleAccountLinking(chatId, telegramUserId, potentialCode);
       return NextResponse.json({ ok: true });
     }
 
-    // 3. Authenticate & Retrieve Linked User
-    const { data: account, error: accountError } = await supabaseAdmin
-      .from("telegram_accounts")
-      .select("user_id")
-      .eq("telegram_user_id", telegramUserId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (accountError || !account) {
+    // 4. Authenticate & Retrieve Linked User
+    if (!userId) {
       const welcomeText = `
 👋 <b>Welcome to Clutch AI!</b>
 
@@ -77,19 +115,13 @@ Once connected, I will become your autonomous productivity companion, synchroniz
       return NextResponse.json({ ok: true });
     }
 
-    const userId = account.user_id;
-    if (!userId) {
-      await TelegramBotService.sendMessage(chatId, "⚠️ Your account is linked but has no associated user ID. Please re-link in Settings.");
-      return NextResponse.json({ ok: true });
-    }
-
-    // 4. Process Quick System Commands
+    // 5. Process Quick System Commands
     if (text?.startsWith("/")) {
       const processed = await handleBotCommands(chatId, userId, text);
       if (processed) return NextResponse.json({ ok: true });
     }
 
-    // 5. Run AI Dialogue Pipeline (Natural Chat, Voice Notes, or Attachments)
+    // 6. Run AI Dialogue Pipeline (Natural Chat, Voice Notes, or Attachments)
     await handleAIDialogue(chatId, userId, message);
     return NextResponse.json({ ok: true });
 
@@ -137,6 +169,23 @@ async function handleAccountLinking(chatId: number, telegramUserId: number, code
     return false;
   }
 
+  if (!account.user_id) {
+    await TelegramBotService.sendMessage(chatId, "⚠️ A database error occurred during linking. User profile not found.");
+    return false;
+  }
+
+  // Delete any stale accounts that already have the same telegram_user_id or chat_id
+  // to prevent unique constraint violations on update.
+  try {
+    await supabaseAdmin
+      .from("telegram_accounts")
+      .delete()
+      .or(`telegram_user_id.eq.${telegramUserId},chat_id.eq.${chatId}`)
+      .neq("id", account.id);
+  } catch (deleteErr) {
+    console.warn("[TelegramWebhook] Stale account deletion error:", deleteErr);
+  }
+
   // Update account mapping as linked & active
   const { error: updateError } = await supabaseAdmin
     .from("telegram_accounts")
@@ -154,6 +203,19 @@ async function handleAccountLinking(chatId: number, telegramUserId: number, code
     console.error("[TelegramWebhook] Database linking update failed:", updateError.message);
     await TelegramBotService.sendMessage(chatId, "⚠️ A database error occurred during linking. Please try again.");
     return false;
+  }
+
+  // Insert linking activity log
+  try {
+    await supabaseAdmin.from("activity_logs").insert({
+      user_id: account.user_id,
+      action: "telegram_linked",
+      entity_type: "telegram",
+      entity_id: String(chatId),
+      metadata: { telegram_user_id: telegramUserId, chat_id: chatId }
+    });
+  } catch (logErr) {
+    console.error("[TelegramWebhook] Failed to write linking log:", logErr);
   }
 
   // Send celebration!
