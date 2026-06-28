@@ -3,13 +3,13 @@ import type { Json } from "@/types/database.types";
 import { AIClient } from "@/lib/ai/providers";
 import type { Task } from "@/types/app.types";
 
-export interface EmergencyStep {
+export type EmergencyStep = {
   step: string;
   duration: number;
   type: "focus" | "break" | "review";
-}
+};
 
-export interface RescuePlanData {
+export type RescuePlanData = {
   is_active: boolean;
   emergency_task_id: string | null;
   hours_remaining: number;
@@ -19,7 +19,7 @@ export interface RescuePlanData {
   estimated_finish_time: string | null;
   emergency_action_plan: EmergencyStep[];
   remaining_focus_sessions: number;
-}
+};
 
 export class RescueEngine {
 
@@ -91,7 +91,7 @@ export class RescueEngine {
         .upsert({
           user_id: userId,
           is_active: false,
-          emergency_action_plan: [] as Json
+          emergency_action_plan: []
         }, { onConflict: "user_id" });
       return null;
     }
@@ -172,7 +172,7 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
           recovery_probability: planData.recovery_probability,
           current_risk: planData.current_risk,
           estimated_finish_time: planData.estimated_finish_time,
-          emergency_action_plan: planData.emergency_action_plan as Json,
+          emergency_action_plan: planData.emergency_action_plan,
           remaining_focus_sessions: planData.remaining_focus_sessions,
           activated_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -187,7 +187,7 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
           reason: triggerReason,
           recovery_probability: planData.recovery_probability,
           critical_task: criticalTask?.title
-        } as Json
+        }
       });
 
       // Proactive Telegram Rescue Notification
@@ -238,14 +238,14 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
         user_id: userId,
         is_active: false,
         emergency_task_id: null,
-        emergency_action_plan: [] as Json
+        emergency_action_plan: []
       }, { onConflict: "user_id" });
 
     await supabase.from("activity_logs").insert({
       user_id: userId,
       action: "RescueModeDeactivated",
       entity_type: "system",
-      metadata: { timestamp: new Date().toISOString() } as Json
+      metadata: { timestamp: new Date().toISOString() }
     });
   }
 
