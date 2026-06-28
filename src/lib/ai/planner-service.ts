@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { AIClient } from "./providers";
+import type { Json } from "@/types/database.types";
 import { ContextBuilder } from "./context-builder";
 import type { Task } from "@/types/app.types";
 
@@ -128,7 +129,7 @@ Optimize my workload and map out specific hour-blocked time blocks for today and
         {
           user_id: userId,
           plan_type: "daily",
-          plan_data: planData as any,
+          plan_data: planData as Json,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id, plan_type" }
@@ -145,7 +146,7 @@ Optimize my workload and map out specific hour-blocked time blocks for today and
         const { error: insertError } = await supabase.from("execution_plans").insert({
           user_id: userId,
           plan_type: "daily",
-          plan_data: planData as any,
+          plan_data: planData as Json,
         });
 
         if (insertError) {

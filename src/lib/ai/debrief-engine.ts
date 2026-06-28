@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
 import { AIClient } from "@/lib/ai/providers";
 
 export interface DailyDebriefData {
@@ -176,14 +177,14 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
           user_id: userId,
           debrief_date: targetDateStr,
           summary: debriefData.summary,
-          metrics: debriefData.metrics as any,
-          completed_tasks: completedToday.map((t) => t.title) as any,
-          delayed_tasks: delayedToday.map((t) => t.title) as any,
-          improvements: debriefData.improvements as any,
-          tomorrow_priorities: debriefData.tomorrow_priorities as any,
+          metrics: debriefData.metrics as Json,
+          completed_tasks: completedToday.map((t) => t.title) as Json,
+          delayed_tasks: delayedToday.map((t) => t.title) as Json,
+          improvements: debriefData.improvements as Json,
+          tomorrow_priorities: debriefData.tomorrow_priorities as Json,
           tomorrow_probability: debriefData.tomorrow_probability,
           best_achievement: debriefData.best_achievement,
-          missed_opportunities: debriefData.missed_opportunities as any,
+          missed_opportunities: debriefData.missed_opportunities as Json,
           created_at: new Date().toISOString()
         }, { onConflict: "user_id,debrief_date" });
 
@@ -192,7 +193,7 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
         user_id: userId,
         action: "DailyDebriefGenerated",
         entity_type: "system",
-        metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score } as any
+        metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score } as Json
       });
 
       // Proactive Telegram Daily Debrief
@@ -286,10 +287,19 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
       minutes: h.focus_time_minutes || 0
     }));
 
-    const burnoutTrend = historyLogs.map((h) => ({
-      date: h.recorded_date,
-      score: (h.details as any)?.stress_index || 0
-    }));
+    const burnoutTrend = historyLogs.map((h) => {
+      let score = 0;
+      if (h.details && typeof h.details === "object" && !Array.isArray(h.details)) {
+        const val = h.details["stress_index"];
+        if (typeof val === "number") {
+          score = val;
+        }
+      }
+      return {
+        date: h.recorded_date,
+        score
+      };
+    });
 
     // Formulate weekly analytics using Gemini
     try {
@@ -354,12 +364,12 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
           start_date: startDateStr,
           end_date: endDateStr,
           reflection_text: reflectionData.reflection_text,
-          metrics: reflectionData.metrics as any,
-          weekly_wins: reflectionData.weekly_wins as any,
-          focus_trends: reflectionData.focus_trends as any,
-          burnout_trend: reflectionData.burnout_trend as any,
+          metrics: reflectionData.metrics as Json,
+          weekly_wins: reflectionData.weekly_wins as Json,
+          focus_trends: reflectionData.focus_trends as Json,
+          burnout_trend: reflectionData.burnout_trend as Json,
           coaching_advice: reflectionData.coaching_advice,
-          suggested_changes: reflectionData.suggested_changes as any,
+          suggested_changes: reflectionData.suggested_changes as Json,
           created_at: new Date().toISOString()
         }, { onConflict: "user_id,start_date" });
 
@@ -368,7 +378,7 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
         user_id: userId,
         action: "WeeklyReflectionGenerated",
         entity_type: "system",
-        metadata: { start: startDateStr, end: endDateStr } as any
+        metadata: { start: startDateStr, end: endDateStr } as Json
       });
 
       // Proactive Telegram Weekly Reflection
