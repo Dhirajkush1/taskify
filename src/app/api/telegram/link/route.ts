@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { TelegramBotService } from "@/lib/telegram/bot-service";
 
 export const runtime = "nodejs";
 
@@ -55,6 +56,27 @@ export async function GET(request: NextRequest) {
       }
     }
     // -----------------------------------
+
+    // --- WEBHOOK AUTO-REGISTRATION ---
+    // Check and register the Telegram webhook url with Telegram Bot API if configured
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+        const webhookUrl = `${appUrl}/api/telegram/webhook`;
+        console.log(`[TelegramLink] Checking webhook registration state: ${webhookUrl}`);
+        const info = await TelegramBotService.getWebhookInfo();
+        if (!info || info.url !== webhookUrl) {
+          console.log(`[TelegramLink] Webhook url mismatch (current: ${info?.url || "none"}). Updating to: ${webhookUrl}`);
+          const success = await TelegramBotService.setWebhook(webhookUrl);
+          console.log(`[TelegramLink] Webhook set success: ${success}`);
+        } else {
+          console.log(`[TelegramLink] Webhook is already correctly registered at: ${webhookUrl}`);
+        }
+      } catch (err) {
+        console.error("[TelegramLink] Webhook registration logic failed:", err);
+      }
+    }
+    // ---------------------------------
 
     // Fetch telegram account mapping
     const { data: account, error: accountError } = await supabase
