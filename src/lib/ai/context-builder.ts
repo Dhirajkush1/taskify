@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { MemoryService } from "./memory-service";
+import type { Task } from "@/types/app.types";
 
 export interface CompiledContext {
   promptContextString: string;
@@ -100,7 +101,7 @@ export class ContextBuilder {
     let tasksStr = "";
     if (activeTasks.length > 0) {
       tasksStr = "\nCURRENT UNFINISHED TASKS:\n" +
-        activeTasks.map(t => 
+        activeTasks.map((t: Task) => 
           `- Task: "${t.title}" | Priority Score: ${t.priority_score}% | Status: ${t.status} | Effort: ${t.estimated_duration || 30} mins | Deadline: ${t.deadline || "None"} | Risk: ${t.risk_level} | Dependencies: [${((t.dependencies as string[] | null) || []).join(", ")}]`
         ).join("\n") + "\n";
     } else {

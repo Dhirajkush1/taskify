@@ -98,7 +98,6 @@ export async function POST(request: NextRequest) {
         }
       };
       responsePayloadToStream = JSON.stringify(errorPayload);
-    }SON.stringify(errorPayload);
     }
 
     // 6. Stream the final payload (success or error) to the client with a smooth typing delay

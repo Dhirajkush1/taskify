@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database.types";
 import { 
   Bell, Brain, Moon, Shield, Loader2, Sparkles, 
-  Send, Check, Copy, ExternalLink, RefreshCw, AlertCircle, Trash2
+  Send, Check, Copy, ExternalLink, RefreshCw, AlertCircle, Trash2, Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 

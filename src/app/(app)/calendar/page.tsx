@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import { Calendar as CalendarIcon, Clock, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { triggerConfetti } from "@/components/shared/confetti-canvas";
