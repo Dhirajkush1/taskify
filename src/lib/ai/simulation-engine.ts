@@ -106,7 +106,7 @@ Do not wrap in markdown or include extra conversational text. Return raw JSON.`;
           scenario: scenarioPrompt,
           impact: parsed.workload_impact,
           simulated_prob: parsed.simulated_completion_probability
-        } as Json
+        }
       });
 
       return {

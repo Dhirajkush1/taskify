@@ -4,17 +4,25 @@ import type { Json } from "@/types/database.types";
 import { ContextBuilder } from "./context-builder";
 import type { Task } from "@/types/app.types";
 
-export interface TimeBlock {
+export type TimeBlock = {
   time: string; // e.g. "09:00 - 10:30"
   task_title: string;
   duration_minutes: number;
-}
+};
 
-export interface NextBestAction {
+export type NextBestAction = {
   title: string;
   estimated_time: number;
   reason: string;
-}
+};
+
+export type ExecutionPlanData = {
+  today: string[];
+  tomorrow: string[];
+  weekly: string[];
+  estimated_finish_time?: string | null;
+  recommended_work_blocks?: string | null;
+};
 
 export class PlannerService {
   /**
@@ -70,7 +78,7 @@ export class PlannerService {
    * Uses Gemini to perform Adaptive Rescheduling and Hour-Blocked Time Slot planning.
    * Triggered when tasks are overdue or skipped.
    */
-  static async regenerateTimeBlockPlan(userId: string): Promise<any> {
+  static async regenerateTimeBlockPlan(userId: string): Promise<ExecutionPlanData | null> {
     // 1. Build rich context containing memories, current plan, and tasks
     const context = await ContextBuilder.buildContext(userId, "regenerate my schedule, reschedule overdue items");
 
@@ -121,7 +129,7 @@ Optimize my workload and map out specific hour-blocked time blocks for today and
     );
 
     try {
-      const planData = JSON.parse(text);
+      const planData: ExecutionPlanData = JSON.parse(text);
       
       // Save plan back to Supabase
       const supabase = await createClient();
@@ -129,7 +137,7 @@ Optimize my workload and map out specific hour-blocked time blocks for today and
         {
           user_id: userId,
           plan_type: "daily",
-          plan_data: planData as Json,
+          plan_data: planData,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id, plan_type" }
@@ -146,7 +154,7 @@ Optimize my workload and map out specific hour-blocked time blocks for today and
         const { error: insertError } = await supabase.from("execution_plans").insert({
           user_id: userId,
           plan_type: "daily",
-          plan_data: planData as Json,
+          plan_data: planData,
         });
 
         if (insertError) {

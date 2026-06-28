@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database.types";
 import { AIClient } from "@/lib/ai/providers";
 
-export interface DailyDebriefData {
+export type DailyDebriefData = {
   summary: string;
   metrics: {
     completion_rate: number;
@@ -17,9 +17,9 @@ export interface DailyDebriefData {
   tomorrow_probability: number;
   best_achievement: string;
   missed_opportunities: string[];
-}
+};
 
-export interface WeeklyReflectionData {
+export type WeeklyReflectionData = {
   start_date: string;
   end_date: string;
   reflection_text: string;
@@ -34,7 +34,7 @@ export interface WeeklyReflectionData {
   burnout_trend: Array<{ date: string; score: number }>;
   coaching_advice: string;
   suggested_changes: string[];
-}
+};
 
 export class DebriefEngine {
 
@@ -177,14 +177,14 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
           user_id: userId,
           debrief_date: targetDateStr,
           summary: debriefData.summary,
-          metrics: debriefData.metrics as Json,
-          completed_tasks: completedToday.map((t) => t.title) as Json,
-          delayed_tasks: delayedToday.map((t) => t.title) as Json,
-          improvements: debriefData.improvements as Json,
-          tomorrow_priorities: debriefData.tomorrow_priorities as Json,
+          metrics: debriefData.metrics,
+          completed_tasks: completedToday.map((t) => t.title),
+          delayed_tasks: delayedToday.map((t) => t.title),
+          improvements: debriefData.improvements,
+          tomorrow_priorities: debriefData.tomorrow_priorities,
           tomorrow_probability: debriefData.tomorrow_probability,
           best_achievement: debriefData.best_achievement,
-          missed_opportunities: debriefData.missed_opportunities as Json,
+          missed_opportunities: debriefData.missed_opportunities,
           created_at: new Date().toISOString()
         }, { onConflict: "user_id,debrief_date" });
 
@@ -193,7 +193,7 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
         user_id: userId,
         action: "DailyDebriefGenerated",
         entity_type: "system",
-        metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score } as Json
+        metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score }
       });
 
       // Proactive Telegram Daily Debrief
@@ -364,12 +364,12 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
           start_date: startDateStr,
           end_date: endDateStr,
           reflection_text: reflectionData.reflection_text,
-          metrics: reflectionData.metrics as Json,
-          weekly_wins: reflectionData.weekly_wins as Json,
-          focus_trends: reflectionData.focus_trends as Json,
-          burnout_trend: reflectionData.burnout_trend as Json,
+          metrics: reflectionData.metrics,
+          weekly_wins: reflectionData.weekly_wins,
+          focus_trends: reflectionData.focus_trends,
+          burnout_trend: reflectionData.burnout_trend,
           coaching_advice: reflectionData.coaching_advice,
-          suggested_changes: reflectionData.suggested_changes as Json,
+          suggested_changes: reflectionData.suggested_changes,
           created_at: new Date().toISOString()
         }, { onConflict: "user_id,start_date" });
 
@@ -378,7 +378,7 @@ Do not wrap the response in markdown formatting or include any other text. Outpu
         user_id: userId,
         action: "WeeklyReflectionGenerated",
         entity_type: "system",
-        metadata: { start: startDateStr, end: endDateStr } as Json
+        metadata: { start: startDateStr, end: endDateStr }
       });
 
       // Proactive Telegram Weekly Reflection

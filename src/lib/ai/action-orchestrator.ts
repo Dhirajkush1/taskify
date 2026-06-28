@@ -4,7 +4,7 @@ import { ReminderService } from "./reminder-service";
 import { MemoryService } from "./memory-service";
 import { ProbabilityEngine } from "./probability-engine";
 
-export interface OrchestratorActionPayload {
+export type OrchestratorActionPayload = {
   chat_response: string;
   extracted_tasks?: Array<{
     title: string;
@@ -43,7 +43,7 @@ export interface OrchestratorActionPayload {
     value: string;
     importance?: number;
   }>;
-}
+};
 
 export class ActionOrchestrator {
   /**
@@ -283,7 +283,7 @@ export class ActionOrchestrator {
             {
               user_id: userId,
               plan_type: "daily" as const,
-              plan_data: payload.execution_plan as Json,
+              plan_data: payload.execution_plan,
               updated_at: new Date().toISOString(),
             },
             { onConflict: "user_id, plan_type" }
@@ -299,7 +299,7 @@ export class ActionOrchestrator {
           const { error: insertError } = await supabase.from("execution_plans").insert({
             user_id: userId,
             plan_type: "daily" as const,
-            plan_data: payload.execution_plan as Json,
+            plan_data: payload.execution_plan,
           });
 
           if (insertError) throw new Error(`Execution plan save failed: ${insertError.message}`);
