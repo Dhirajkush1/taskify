@@ -86,7 +86,7 @@ export function Sidebar({ user }: SidebarProps) {
                   className="font-bold text-base tracking-tight whitespace-nowrap"
                   style={{ color: "var(--text-primary)" }}
                 >
-                  Clutch AI
+                  Taskify AI
                 </motion.span>
               )}
             </AnimatePresence>

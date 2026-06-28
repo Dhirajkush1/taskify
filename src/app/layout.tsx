@@ -15,21 +15,21 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Clutch AI — Beat Every Deadline",
-    template: "%s | Clutch AI",
+    default: "Taskify AI — Beat Every Deadline",
+    template: "%s | Taskify AI",
   },
   description:
-    "Clutch AI is your AI productivity companion that helps you actually complete work before deadlines. Just talk naturally — Clutch extracts tasks, sets priorities, and keeps you ahead.",
+    "Taskify AI is your AI productivity companion that helps you actually complete work before deadlines. Just talk naturally — Taskify extracts tasks, sets priorities, and keeps you ahead.",
   keywords: ["AI productivity", "task management", "deadline tracker", "AI assistant", "mission control"],
-  authors: [{ name: "Clutch AI" }],
+  authors: [{ name: "Taskify AI" }],
   openGraph: {
-    title: "Clutch AI — Beat Every Deadline",
+    title: "Taskify AI — Beat Every Deadline",
     description: "Your AI productivity companion. Talk naturally, get things done.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clutch AI",
+    title: "Taskify AI",
     description: "Your AI productivity companion.",
   },
 };
