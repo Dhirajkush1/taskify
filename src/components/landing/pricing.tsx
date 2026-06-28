@@ -98,8 +98,8 @@ export function Pricing() {
           <div
             className="absolute inset-0 z-10 rounded-2xl"
             style={{
-              backdropFilter: "blur(2px)",
-              background: "var(--background)/40",
+              backdropFilter: "blur(2.5px)",
+              background: "rgba(255, 255, 255, 0.45)",
             }}
           />
 

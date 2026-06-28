@@ -52,7 +52,7 @@ export function CTA() {
             style={{ color: "var(--text-secondary)", lineHeight: "1.7" }}
           >
             Join thousands of students, professionals, and founders who use
-            Clutch AI to stay ahead of every deadline.
+            Taskify AI to stay ahead of every deadline.
           </p>
 
           <div className="flex flex-wrap gap-4 justify-center">
