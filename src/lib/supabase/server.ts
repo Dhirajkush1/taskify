@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
-export async function createClient(): Promise<SupabaseClient<Database>> {
+export async function createClient(): Promise<SupabaseClient<Database, any, any, any>> {
   const cookieStore = await cookies();
 
   return createServerClient<Database>(
@@ -14,10 +14,10 @@ export async function createClient(): Promise<SupabaseClient<Database>> {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: any[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, options as any)
             );
           } catch {
             // Server component — cookies can't be set, ignore
