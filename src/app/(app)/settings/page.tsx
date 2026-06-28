@@ -160,6 +160,14 @@ export default function SettingsPage() {
       updatePayload.daily_summary_time = value;
     } else if (key === "ai_personality") {
       updatePayload.ai_personality = value;
+    } else if (key === "timezone") {
+      updatePayload.timezone = value;
+    } else if (key === "locale") {
+      updatePayload.locale = value;
+    } else if (key === "working_hours_start") {
+      updatePayload.working_hours_start = value;
+    } else if (key === "working_hours_end") {
+      updatePayload.working_hours_end = value;
     } else if (key === "updated_at") {
       updatePayload.updated_at = value;
     }
@@ -353,6 +361,87 @@ export default function SettingsPage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+      </motion.section>
+
+      {/* 2.5. Timezone & Timeline Config */}
+      <motion.section
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.06 }}
+        className="rounded-2xl p-6 border"
+        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Clock className="w-4 h-4 text-violet-400" />
+          <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--text-primary)" }}>
+            Locale & Time Zone Settings
+          </h2>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-neutral-400 block mb-1.5">IANA Time Zone</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={settings?.timezone || "UTC"}
+                  onChange={(e) => updateSetting("timezone", e.target.value)}
+                  className="w-full bg-neutral-950 text-xs px-3 py-2 rounded-xl border border-neutral-805 focus:border-violet-500 outline-none text-neutral-200"
+                />
+                {saving === "timezone" && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-neutral-400 block mb-1.5">User Locale</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={settings?.locale || "en-US"}
+                  onChange={(e) => updateSetting("locale", e.target.value)}
+                  className="w-full bg-neutral-950 text-xs px-3 py-2 rounded-xl border border-neutral-805 focus:border-violet-500 outline-none text-neutral-200"
+                />
+                {saving === "locale" && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-neutral-400 block mb-1.5">Working Hours Start</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="09:00"
+                  value={settings?.working_hours_start || "09:00"}
+                  onChange={(e) => updateSetting("working_hours_start", e.target.value)}
+                  className="w-full bg-neutral-950 text-xs px-3 py-2 rounded-xl border border-neutral-805 focus:border-violet-500 outline-none text-neutral-200"
+                />
+                {saving === "working_hours_start" && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-neutral-400 block mb-1.5">Working Hours End</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="17:00"
+                  value={settings?.working_hours_end || "17:00"}
+                  onChange={(e) => updateSetting("working_hours_end", e.target.value)}
+                  className="w-full bg-neutral-950 text-xs px-3 py-2 rounded-xl border border-neutral-805 focus:border-violet-500 outline-none text-neutral-200"
+                />
+                {saving === "working_hours_end" && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </motion.section>

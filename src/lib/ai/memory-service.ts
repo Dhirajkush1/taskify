@@ -16,10 +16,7 @@ export class MemoryService {
    * Automatically extracts and saves memories from user natural language statements.
    * Runs in the background during chats.
    */
-  static async extractAndSaveMemory(userId: string, userMessage: string): Promise<void> {
-    const messageLower = userMessage.toLowerCase();
-    
-    // Simple heuristic-based extraction for MVP, which is extremely fast and robust
+  static async extractAndSaveMemory(userId: string, userMessage: string, supabaseClient?: any): Promise<void> {
     const patterns = [
       { key: "work_hours", keywords: ["work from", "work between", "working hours", "work hours"], regex: /work (?:from|between|hours are) (.*)/i },
       { key: "study_time", keywords: ["study after", "study at", "study between", "study time"], regex: /study (?:after|at|between|time is) (.*)/i },
@@ -28,7 +25,7 @@ export class MemoryService {
       { key: "working_style", keywords: ["working style", "focus block", "pomodoro"], regex: /(?:working style|focus block|prefer) (.*)/i }
     ];
 
-    const supabase = await createClient();
+    const supabase = supabaseClient || (await createClient());
 
     for (const pattern of patterns) {
       const match = userMessage.match(pattern.regex);
@@ -54,8 +51,8 @@ export class MemoryService {
   /**
    * Fetches all memories for a user.
    */
-  static async getUserMemories(userId: string): Promise<UserMemory[]> {
-    const supabase = await createClient();
+  static async getUserMemories(userId: string, supabaseClient?: any): Promise<UserMemory[]> {
+    const supabase = supabaseClient || (await createClient());
     const { data, error } = await supabase
       .from("user_memories")
       .select("*")
@@ -72,8 +69,8 @@ export class MemoryService {
   /**
    * Fetches memories relevant to a specific text query (keyword overlap).
    */
-  static async getRelevantMemories(userId: string, queryText: string): Promise<UserMemory[]> {
-    const memories = await this.getUserMemories(userId);
+  static async getRelevantMemories(userId: string, queryText: string, supabaseClient?: any): Promise<UserMemory[]> {
+    const memories = await this.getUserMemories(userId, supabaseClient);
     const queryTokens = queryText.toLowerCase().split(/\s+/);
 
     // Filter memories where keys or values match query keywords
@@ -87,8 +84,8 @@ export class MemoryService {
   /**
    * Adds or updates a memory.
    */
-  static async saveMemory(userId: string, key: string, value: string, importance = 3): Promise<void> {
-    const supabase = await createClient();
+  static async saveMemory(userId: string, key: string, value: string, importance = 3, supabaseClient?: any): Promise<void> {
+    const supabase = supabaseClient || (await createClient());
     await supabase.from("user_memories").upsert(
       {
         user_id: userId,

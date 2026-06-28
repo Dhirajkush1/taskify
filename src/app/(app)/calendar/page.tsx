@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Calendar as CalendarIcon, Clock, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { triggerConfetti } from "@/components/shared/confetti-canvas";
@@ -22,52 +22,131 @@ export default function CalendarPage() {
   const [schedule, setSchedule] = useState<ScheduledBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [scheduling, setScheduling] = useState(false);
+  const [settings, setSettings] = useState<{
+    timezone: string;
+    working_hours_start: string;
+    working_hours_end: string;
+  } | null>(null);
   
   const supabase = useMemo(() => createClient(), []);
 
-  const loadTasks = useCallback(async () => {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data } = await supabase
-        .from("tasks")
-        .select("*")
-        .neq("status", "archived")
-        .order("priority_score", { ascending: false });
+  const formatHour = (hourDecimal: number) => {
+    const hours = Math.floor(hourDecimal);
+    const mins = hourDecimal % 1 === 0 ? "00" : "30";
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+    return `${displayHours}:${mins} ${ampm}`;
+  };
 
-      setTasks(data || []);
-
-      // Generate a mock initial schedule based on task details to make it instantly active!
-      if (data && data.length > 0) {
-        const initialSchedule: ScheduledBlock[] = [];
-        let currentHour = 9; // start at 9:00 AM
-        const typedTasks: Task[] = data;
-
-        typedTasks.slice(0, 4).forEach((t) => {
-          const durationMins = t.estimated_duration || 60;
-          const durationHours = Math.round((durationMins / 60) * 2) / 2 || 1; // round to nearest 0.5
-
-          initialSchedule.push({
-            id: t.id,
-            title: t.title,
-            startHour: currentHour,
-            duration: durationHours,
-            priority: t.priority,
-            status: t.status,
-          });
-
-          currentHour += durationHours + 0.5; // add 30 min gap
-        });
-
-        setSchedule(initialSchedule);
-      }
+  const parseHour = (timeStr: string): number => {
+    const cleaned = timeStr.trim();
+    const match = cleaned.match(/^(\d+):(\d+)\s*(AM|PM|am|pm)?$/i);
+    if (!match) return 9;
+    
+    let hours = parseInt(match[1]);
+    const minutes = parseInt(match[2]);
+    const modifier = match[3];
+    
+    if (modifier?.toLowerCase() === "pm" && hours < 12) {
+      hours += 12;
     }
-    setLoading(false);
+    if (modifier?.toLowerCase() === "am" && hours === 12) {
+      hours = 0;
+    }
+    
+    return hours + minutes / 60;
+  };
+
+  const loadTasksAndSchedule = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // 1. Fetch settings, tasks, and daily execution plan in parallel
+      const [settingsRes, tasksRes, planRes] = await Promise.all([
+        supabase.from("settings").select("timezone, working_hours_start, working_hours_end").eq("user_id", user.id).maybeSingle(),
+        supabase.from("tasks").select("*").neq("status", "archived").order("priority_score", { ascending: false }),
+        supabase.from("execution_plans").select("plan_data").eq("user_id", user.id).eq("plan_type", "daily").maybeSingle()
+      ]);
+
+      const userSettings = settingsRes.data || { timezone: "UTC", working_hours_start: "09:00", working_hours_end: "17:00" };
+      setSettings(userSettings);
+
+      const activeTasks: Task[] = tasksRes.data || [];
+      setTasks(activeTasks);
+
+      const planData = planRes.data?.plan_data as { today?: string[] } | null;
+
+      // 2. Parse daily plan if present
+      if (planData && Array.isArray(planData.today) && planData.today.length > 0) {
+        const blocks: ScheduledBlock[] = [];
+        planData.today.forEach((line, index) => {
+          const match = line.match(/^(\d+:\d+\s*(?:AM|PM|am|pm))\s*-\s*(\d+:\d+\s*(?:AM|PM|am|pm)):\s*(.*)$/i);
+          if (match) {
+            const startStr = match[1];
+            const endStr = match[2];
+            const title = match[3].trim();
+            
+            const startHour = parseHour(startStr);
+            const endHour = parseHour(endStr);
+            const duration = Math.max(0.5, endHour - startHour);
+            
+            const matchedTask = activeTasks.find(t => 
+              t.title.toLowerCase().includes(title.toLowerCase()) || 
+              title.toLowerCase().includes(t.title.toLowerCase())
+            );
+            
+            blocks.push({
+              id: matchedTask?.id || `block-${index}`,
+              title: title,
+              startHour,
+              duration,
+              priority: matchedTask?.priority || "medium",
+              status: matchedTask?.status || "todo"
+            });
+          }
+        });
+        setSchedule(blocks);
+      } else {
+        // Fallback: Generate mock blocks from tasks
+        if (activeTasks.length > 0) {
+          const initialSchedule: ScheduledBlock[] = [];
+          let currentHour = parseHour(userSettings.working_hours_start || "09:00");
+          
+          activeTasks.slice(0, 4).forEach((t) => {
+            const durationMins = t.estimated_duration || 60;
+            const durationHours = Math.round((durationMins / 60) * 2) / 2 || 1;
+            
+            initialSchedule.push({
+              id: t.id,
+              title: t.title,
+              startHour: currentHour,
+              duration: durationHours,
+              priority: t.priority,
+              status: t.status,
+            });
+            currentHour += durationHours + 0.5;
+          });
+          setSchedule(initialSchedule);
+        } else {
+          setSchedule([]);
+        }
+      }
+    } catch (err: any) {
+      console.error("[Calendar] Error loading tasks/schedule:", err.message);
+      toast.error("Failed to load planner schedule.");
+    } finally {
+      setLoading(false);
+    }
   }, [supabase]);
 
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    loadTasksAndSchedule();
+  }, [loadTasksAndSchedule]);
 
   // AI Auto-Scheduling Trigger
   const handleAutoSchedule = async () => {
@@ -75,10 +154,6 @@ export default function CalendarPage() {
     toast.info("Clutch AI is calculating non-overlapping work slots...");
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Request a recalculated plan from the server
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,29 +169,11 @@ export default function CalendarPage() {
       });
 
       if (res.ok) {
-        // Rearrange local schedule logically to simulate perfect AI scheduling
-        const sorted = [...tasks].sort((a, b) => (b.priority_score || 0) - (a.priority_score || 0));
-        const newSchedule: ScheduledBlock[] = [];
-        let currentHour = 8.5; // start at 8:30 AM
-
-        sorted.forEach((t) => {
-          const durationHours = Math.round(((t.estimated_duration || 45) / 60) * 2) / 2 || 1;
-          if (currentHour + durationHours <= 18.5) { // fit within 8:30am - 6:30pm
-            newSchedule.push({
-              id: t.id,
-              title: t.title,
-              startHour: currentHour,
-              duration: durationHours,
-              priority: t.priority,
-              status: t.status,
-            });
-            currentHour += durationHours + 0.5;
-          }
-        });
-
-        setSchedule(newSchedule);
+        await loadTasksAndSchedule();
         triggerConfetti();
         toast.success("AI auto-scheduling completed! Calendar optimized.");
+      } else {
+        throw new Error("API responded with an error");
       }
     } catch {
       toast.error("Auto-scheduling failed. Try again.");
@@ -138,37 +195,53 @@ export default function CalendarPage() {
       );
       triggerConfetti();
       toast.success("Task checked off! Celebration fired.");
-      loadTasks();
+      loadTasksAndSchedule();
     }
   };
 
-  // Shift block times (simulation of rescheduling)
-  const shiftTime = (blockId: string, hours: number) => {
-    setSchedule((prev) =>
-      prev.map((item) => {
-        if (item.id === blockId) {
-          const newStart = Math.min(Math.max(item.startHour + hours, 8), 19);
-          return { ...item, startHour: newStart };
-        }
-        return item;
-      })
-    );
-    toast.success("Task rescheduled! Timeline synchronized.");
-  };
+  // Shift block times and persist to Supabase
+  const shiftTime = async (blockId: string, hours: number) => {
+    const startLimit = settings ? parseHour(settings.working_hours_start) : 8;
+    const endLimit = settings ? parseHour(settings.working_hours_end) : 19;
 
-  const formatHour = (hourDecimal: number) => {
-    const hours = Math.floor(hourDecimal);
-    const mins = hourDecimal % 1 === 0 ? "00" : "30";
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const displayHours = hours > 12 ? hours - 12 : hours;
-    return `${displayHours}:${mins} ${ampm}`;
+    const updatedSchedule = schedule.map((item) => {
+      if (item.id === blockId) {
+        const newStart = Math.min(Math.max(item.startHour + hours, startLimit), endLimit);
+        return { ...item, startHour: newStart };
+      }
+      return item;
+    });
+
+    setSchedule(updatedSchedule);
+
+    // Save updated execution plan lines
+    const lines = updatedSchedule.map(item => 
+      `${formatHour(item.startHour)} - ${formatHour(item.startHour + item.duration)}: ${item.title}`
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from("execution_plans").upsert({
+        user_id: user.id,
+        plan_type: "daily",
+        plan_data: { today: lines },
+        updated_at: new Date().toISOString()
+      }, { onConflict: "user_id, plan_type" });
+      
+      toast.success("Task rescheduled! Timeline synchronized.");
+    }
   };
 
   // Compile hourly slots for rendering
-  const timeSlots = [];
-  for (let i = 8; i <= 19; i += 0.5) {
-    timeSlots.push(i);
-  }
+  const timeSlots = useMemo(() => {
+    const slots = [];
+    const start = settings ? parseHour(settings.working_hours_start) : 8;
+    const end = settings ? parseHour(settings.working_hours_end) : 19;
+    for (let i = start; i <= end; i += 0.5) {
+      slots.push(i);
+    }
+    return slots;
+  }, [settings]);
 
   if (loading) {
     return (
@@ -189,7 +262,7 @@ export default function CalendarPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={loadTasks}
+            onClick={loadTasksAndSchedule}
             className="p-2 rounded-xl bg-white/5 border border-white/5 text-neutral-400 hover:text-white transition-all"
             title="Reload tasks"
           >
@@ -232,14 +305,13 @@ export default function CalendarPage() {
                 <CalendarIcon className="w-4 h-4 text-violet-400" /> Today&apos;s Work Blocks
               </span>
               <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded-full text-neutral-400 font-bold">
-                Hour-Blocked
+                {settings?.timezone || "UTC"}
               </span>
             </div>
 
             {/* Hourly Grid list */}
             <div className="space-y-1 max-h-[480px] overflow-y-auto pr-1">
               {timeSlots.map((slot) => {
-                // Check if a scheduled block starts at this slot
                 const block = schedule.find(
                   (item) => slot >= item.startHour && slot < item.startHour + item.duration
                 );
@@ -281,7 +353,7 @@ export default function CalendarPage() {
                                 </span>
                               </div>
 
-                              {block.status !== "done" && (
+                              {block.status !== "done" && !block.id.startsWith("block-") && (
                                 <button
                                   onClick={() => handleCompleteTask(block.id)}
                                   className="w-5 h-5 rounded-md flex items-center justify-center bg-white/5 border border-white/10 text-neutral-400 hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/20 transition-all cursor-pointer"

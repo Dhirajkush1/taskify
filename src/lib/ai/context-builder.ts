@@ -4,6 +4,16 @@ import { MemoryService } from "./memory-service";
 export interface CompiledContext {
   promptContextString: string;
   personality: string;
+  settings: {
+    timezone: string;
+    locale: string;
+    country: string;
+    working_hours_start: string;
+    working_hours_end: string;
+    week_start: number;
+    preferred_focus_hours_start: string;
+    preferred_focus_hours_end: string;
+  };
 }
 
 export class ContextBuilder {
@@ -11,8 +21,8 @@ export class ContextBuilder {
    * Automatically builds a relevant, minimal, and high-fidelity context prompt
    * using database states, unfinished tasks, schedules, memories, and active personality.
    */
-  static async buildContext(userId: string, queryText: string): Promise<CompiledContext> {
-    const supabase = await createClient();
+  static async buildContext(userId: string, queryText: string, supabaseClient?: any): Promise<CompiledContext> {
+    const supabase = supabaseClient || (await createClient());
 
     // Fetch data in parallel
     const [
@@ -36,24 +46,57 @@ export class ContextBuilder {
         .maybeSingle(),
       supabase
         .from("settings")
-        .select("ai_personality")
+        .select("ai_personality, timezone, locale, country, working_hours_start, working_hours_end, week_start, preferred_focus_hours_start, preferred_focus_hours_end")
         .eq("user_id", userId)
         .maybeSingle(),
-      MemoryService.getRelevantMemories(userId, queryText)
+      MemoryService.getRelevantMemories(userId, queryText, supabaseClient)
     ]);
 
     const activeTasks = tasks || [];
     const activePlan = (plan?.plan_data as { today?: string[] } | null) || null;
     const personality = settingsRow?.ai_personality || "friendly_coach";
 
-    // 1. Compile User Memories Section
+    const settings = {
+      timezone: settingsRow?.timezone || "UTC",
+      locale: settingsRow?.locale || "en-US",
+      country: settingsRow?.country || "US",
+      working_hours_start: settingsRow?.working_hours_start || "09:00",
+      working_hours_end: settingsRow?.working_hours_end || "17:00",
+      week_start: settingsRow?.week_start ?? 1,
+      preferred_focus_hours_start: settingsRow?.preferred_focus_hours_start || "10:00",
+      preferred_focus_hours_end: settingsRow?.preferred_focus_hours_end || "12:00"
+    };
+
+    // 1. Calculate user's current local time in their configured timezone
+    let userLocalTimeStr = new Date().toISOString();
+    try {
+      userLocalTimeStr = new Date().toLocaleString("en-US", {
+        timeZone: settings.timezone,
+        dateStyle: "full",
+        timeStyle: "long"
+      });
+    } catch (e) {
+      console.warn(`[ContextBuilder] Invalid timezone "${settings.timezone}", defaulting to UTC.`);
+    }
+
+    // 2. Compile User Memories Section
     let memoriesStr = "";
     if (relevantMemories.length > 0) {
       memoriesStr = "\nUSER PREFERENCES & MEMORIES:\n" + 
         relevantMemories.map(m => `- ${m.memory_key.replace("_", " ")}: "${m.memory_value}"`).join("\n") + "\n";
     }
 
-    // 2. Compile Unfinished Tasks Section
+    // 3. Compile Calendar & Timezone Preferences
+    const prefStr = `\nUSER CALENDAR & TIMEZONE CONFIGURATION:
+- User Timezone (IANA): ${settings.timezone}
+- Current Local Time for User: ${userLocalTimeStr}
+- Locale/Country: ${settings.locale} / ${settings.country}
+- Standard Working Hours: ${settings.working_hours_start} to ${settings.working_hours_end}
+- Preferred Daily Focus Window: ${settings.preferred_focus_hours_start} to ${settings.preferred_focus_hours_end}
+- Week Starts On Index: ${settings.week_start} (1=Monday, 0=Sunday)
+`;
+
+    // 4. Compile Unfinished Tasks Section
     let tasksStr = "";
     if (activeTasks.length > 0) {
       tasksStr = "\nCURRENT UNFINISHED TASKS:\n" +
@@ -64,14 +107,14 @@ export class ContextBuilder {
       tasksStr = "\nNo current unfinished tasks in queue.\n";
     }
 
-    // 3. Compile Active Work Blocks / Schedule Section
+    // 5. Compile Active Work Blocks / Schedule Section
     let planStr = "";
     if (activePlan && activePlan.today && activePlan.today.length > 0) {
       planStr = "\nTODAY'S ACTIVE EXECUTION SCHEDULE:\n" +
         activePlan.today.map((b: string) => `- ${b}`).join("\n") + "\n";
     }
 
-    // 4. Compile Personality Instruction Prompt Overlay
+    // 6. Compile Personality Instruction Prompt Overlay
     let personalityPrompt = "";
     switch (personality) {
       case "strict_coach":
@@ -104,8 +147,9 @@ export class ContextBuilder {
     const promptContextString = `
 === CLUTCH CONTEXT COMMAND ===
 The following is active, live context retrieved from Clutch's database about this user. 
-Integrate these details seamlessly to customize your schedules, plans, coach remarks, and task estimations.
+Integrate these details seamlessly to customize your schedules, plans, coach remarks, task estimations, and timezone calculations.
 ${personalityPrompt}
+${prefStr}
 ${memoriesStr}
 ${tasksStr}
 ${planStr}
@@ -114,7 +158,8 @@ ${planStr}
 
     return {
       promptContextString,
-      personality
+      personality,
+      settings
     };
   }
 }
