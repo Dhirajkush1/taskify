@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
 import { AIClient } from "@/lib/ai/providers";
 import type { Task } from "@/types/app.types";
 
@@ -90,7 +91,7 @@ export class RescueEngine {
         .upsert({
           user_id: userId,
           is_active: false,
-          emergency_action_plan: [] as any
+          emergency_action_plan: [] as Json
         }, { onConflict: "user_id" });
       return null;
     }
@@ -171,7 +172,7 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
           recovery_probability: planData.recovery_probability,
           current_risk: planData.current_risk,
           estimated_finish_time: planData.estimated_finish_time,
-          emergency_action_plan: planData.emergency_action_plan as any,
+          emergency_action_plan: planData.emergency_action_plan as Json,
           remaining_focus_sessions: planData.remaining_focus_sessions,
           activated_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -186,7 +187,7 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
           reason: triggerReason,
           recovery_probability: planData.recovery_probability,
           critical_task: criticalTask?.title
-        } as any
+        } as Json
       });
 
       // Proactive Telegram Rescue Notification
@@ -237,14 +238,14 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
         user_id: userId,
         is_active: false,
         emergency_task_id: null,
-        emergency_action_plan: [] as any
+        emergency_action_plan: [] as Json
       }, { onConflict: "user_id" });
 
     await supabase.from("activity_logs").insert({
       user_id: userId,
       action: "RescueModeDeactivated",
       entity_type: "system",
-      metadata: { timestamp: new Date().toISOString() } as any
+      metadata: { timestamp: new Date().toISOString() } as Json
     });
   }
 

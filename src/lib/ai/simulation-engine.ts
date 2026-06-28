@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
 import { AIClient } from "@/lib/ai/providers";
 
 export interface SimulationResult {
@@ -105,7 +106,7 @@ Do not wrap in markdown or include extra conversational text. Return raw JSON.`;
           scenario: scenarioPrompt,
           impact: parsed.workload_impact,
           simulated_prob: parsed.simulated_completion_probability
-        } as any
+        } as Json
       });
 
       return {

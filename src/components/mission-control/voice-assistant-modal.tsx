@@ -17,10 +17,10 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [muted, setMuted] = useState(false);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const speechUttRef = useRef<SpeechSynthesisUtterance | null>(null);
   
-  const handleVoiceSubmitRef = useRef<(queryText: string) => Promise<void>>(null as any);
+  const handleVoiceSubmitRef = useRef<((queryText: string) => Promise<void>) | null>(null);
 
   const stopSpeaking = useCallback(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -53,7 +53,7 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
   useEffect(() => {
     if (typeof window !== "undefined") {
       const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        window.SpeechRecognition || window.webkitSpeechRecognition;
 
       if (SpeechRecognition) {
         const rec = new SpeechRecognition();
@@ -66,7 +66,7 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
           setTranscript("Listening...");
         };
 
-        rec.onresult = (event: any) => {
+        rec.onresult = (event: SpeechRecognitionEvent) => {
           const text = event.results[0][0].transcript;
           setTranscript(text);
           if (handleVoiceSubmitRef.current) {
@@ -74,7 +74,7 @@ export function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProp
           }
         };
 
-        rec.onerror = (err: any) => {
+        rec.onerror = (err: SpeechRecognitionErrorEvent) => {
           console.error("Speech recognition error:", err);
           setIsListening(false);
           setTranscript("Failed to recognize speech. Tap Mic to try again.");

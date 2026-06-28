@@ -47,7 +47,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
   // Helper to play synthesized beep/chime using Web Audio API (no external asset dependencies!)
   const playSynthesizedChime = () => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       const ctx = new AudioContext();
       
