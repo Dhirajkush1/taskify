@@ -37,19 +37,24 @@ export function useCreateTask() {
     mutationFn: (task: Omit<TaskInsert, "user_id">) =>
       createTask({ ...task, user_id: user!.id }),
     onMutate: async (newTask) => {
-      // Optimistic update
       await queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
-      const prev = queryClient.getQueryData(TASKS_QUERY_KEY);
+      const queries = queryClient.getQueriesData({ queryKey: TASKS_QUERY_KEY });
 
-      queryClient.setQueryData(TASKS_QUERY_KEY, (old: unknown[]) => [
-        ...(old || []),
-        { ...newTask, id: "optimistic-" + Date.now(), user_id: user!.id },
-      ]);
+      queries.forEach(([queryKey]) => {
+        queryClient.setQueryData(queryKey, (old: any) => [
+          ...(old || []),
+          { ...newTask, id: "optimistic-" + Date.now(), user_id: user!.id },
+        ]);
+      });
 
-      return { prev };
+      return { queries };
     },
     onError: (_err, _vars, ctx) => {
-      queryClient.setQueryData(TASKS_QUERY_KEY, ctx?.prev);
+      if (ctx?.queries) {
+        ctx.queries.forEach(([queryKey, oldData]) => {
+          queryClient.setQueryData(queryKey, oldData);
+        });
+      }
       toast.error("Failed to create task");
     },
     onSuccess: () => {
@@ -65,7 +70,25 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: TaskUpdate }) =>
       updateTask(id, updates),
-    onError: () => {
+    onMutate: async ({ id, updates }) => {
+      await queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
+      const queries = queryClient.getQueriesData({ queryKey: TASKS_QUERY_KEY });
+
+      queries.forEach(([queryKey]) => {
+        queryClient.setQueryData(queryKey, (old: any) => {
+          if (!Array.isArray(old)) return old;
+          return old.map((t) => (t.id === id ? { ...t, ...updates } : t));
+        });
+      });
+
+      return { queries };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.queries) {
+        ctx.queries.forEach(([queryKey, oldData]) => {
+          queryClient.setQueryData(queryKey, oldData);
+        });
+      }
       toast.error("Failed to update task");
     },
     onSuccess: () => {
@@ -81,14 +104,23 @@ export function useDeleteTask() {
     mutationFn: (id: string) => deleteTask(id),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
-      const prev = queryClient.getQueryData(TASKS_QUERY_KEY);
-      queryClient.setQueryData(TASKS_QUERY_KEY, (old: Array<{ id: string }>) =>
-        (old || []).filter((t) => t.id !== id)
-      );
-      return { prev };
+      const queries = queryClient.getQueriesData({ queryKey: TASKS_QUERY_KEY });
+
+      queries.forEach(([queryKey]) => {
+        queryClient.setQueryData(queryKey, (old: any) => {
+          if (!Array.isArray(old)) return old;
+          return old.filter((t) => t.id !== id);
+        });
+      });
+
+      return { queries };
     },
     onError: (_err, _vars, ctx) => {
-      queryClient.setQueryData(TASKS_QUERY_KEY, ctx?.prev);
+      if (ctx?.queries) {
+        ctx.queries.forEach(([queryKey, oldData]) => {
+          queryClient.setQueryData(queryKey, oldData);
+        });
+      }
       toast.error("Failed to delete task");
     },
     onSuccess: () => {
@@ -103,11 +135,29 @@ export function useCompleteTask() {
 
   return useMutation({
     mutationFn: (id: string) => completeTask(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
+      const queries = queryClient.getQueriesData({ queryKey: TASKS_QUERY_KEY });
+
+      queries.forEach(([queryKey]) => {
+        queryClient.setQueryData(queryKey, (old: any) => {
+          if (!Array.isArray(old)) return old;
+          return old.map((t) => t.id === id ? { ...t, status: "done", completion_percentage: 100 } : t);
+        });
+      });
+
+      return { queries };
+    },
     onSuccess: () => {
       toast.success("🎉 Mission complete!");
       queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
     },
-    onError: () => {
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.queries) {
+        ctx.queries.forEach(([queryKey, oldData]) => {
+          queryClient.setQueryData(queryKey, oldData);
+        });
+      }
       toast.error("Failed to complete task");
     },
   });
@@ -118,11 +168,29 @@ export function useArchiveTask() {
 
   return useMutation({
     mutationFn: (id: string) => archiveTask(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
+      const queries = queryClient.getQueriesData({ queryKey: TASKS_QUERY_KEY });
+
+      queries.forEach(([queryKey]) => {
+        queryClient.setQueryData(queryKey, (old: any) => {
+          if (!Array.isArray(old)) return old;
+          return old.map((t) => t.id === id ? { ...t, status: "archived" } : t);
+        });
+      });
+
+      return { queries };
+    },
     onSuccess: () => {
       toast.success("Task archived");
       queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
     },
-    onError: () => {
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.queries) {
+        ctx.queries.forEach(([queryKey, oldData]) => {
+          queryClient.setQueryData(queryKey, oldData);
+        });
+      }
       toast.error("Failed to archive task");
     },
   });

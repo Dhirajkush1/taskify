@@ -400,25 +400,64 @@ ${context.promptContextString}
         console.log(`[ActionOrchestrator] Processing ${payload.extracted_tasks.length} tasks...`);
         
         for (const t of payload.extracted_tasks) {
-          const { data: taskData, error: taskError } = await supabase
+          // Check for existing uncompleted task with same title and user to prevent duplicates
+          const { data: existingTasks } = await supabase
             .from("tasks")
-            .insert({
-              user_id: userId,
-              title: t.title,
-              description: t.description || null,
-              deadline: t.deadline || null,
-              priority: (t.priority || "medium") as "critical" | "high" | "medium" | "low",
-              status: "todo" as const,
-              estimated_duration: t.estimated_duration || null,
-              completion_percentage: 0,
-              priority_score: t.priority_score || 0,
-              risk_level: (t.risk_level || "low") as "low" | "medium" | "high" | "critical",
-              completion_probability: t.completion_probability ?? 100,
-              dependencies: t.dependencies || [],
-              missing_information: t.missing_information || null,
-            })
-            .select()
-            .single();
+            .select("*")
+            .eq("user_id", userId)
+            .ilike("title", t.title.trim())
+            .eq("status", "todo")
+            .limit(1);
+
+          let taskData = null;
+          let taskError = null;
+
+          if (existingTasks && existingTasks.length > 0) {
+            console.log(`[ActionOrchestrator] Duplicate task found: "${t.title}". Updating existing task.`);
+            const existing = existingTasks[0];
+            const { data: updatedData, error: updateErr } = await supabase
+              .from("tasks")
+              .update({
+                description: t.description || existing.description,
+                deadline: t.deadline || existing.deadline,
+                priority: (t.priority || existing.priority) as any,
+                estimated_duration: t.estimated_duration || existing.estimated_duration,
+                priority_score: t.priority_score || existing.priority_score,
+                risk_level: (t.risk_level || existing.risk_level) as any,
+                completion_probability: t.completion_probability ?? existing.completion_probability,
+                dependencies: t.dependencies || existing.dependencies,
+                missing_information: t.missing_information || existing.missing_information,
+              } as any)
+              .eq("id", existing.id)
+              .select()
+              .single();
+
+            taskData = updatedData;
+            taskError = updateErr;
+          } else {
+            const { data: insertedData, error: insertErr } = await supabase
+              .from("tasks")
+              .insert({
+                user_id: userId,
+                title: t.title,
+                description: t.description || null,
+                deadline: t.deadline || null,
+                priority: (t.priority || "medium") as "critical" | "high" | "medium" | "low",
+                status: "todo" as const,
+                estimated_duration: t.estimated_duration || null,
+                completion_percentage: 0,
+                priority_score: t.priority_score || 0,
+                risk_level: (t.risk_level || "low") as "low" | "medium" | "high" | "critical",
+                completion_probability: t.completion_probability ?? 100,
+                dependencies: t.dependencies || [],
+                missing_information: t.missing_information || null,
+              } as any)
+              .select()
+              .single();
+
+            taskData = insertedData;
+            taskError = insertErr;
+          }
 
           if (taskError) throw new Error(`Task creation failed: ${taskError.message}`);
           if (taskData) {

@@ -78,9 +78,25 @@ Decompose this milestone into 3-5 clear tasks.
           completion_probability: 95
         }));
 
-        const { error } = await supabase.from("tasks").insert(taskPayloads);
-        if (error) {
-          console.error("[GoalService] Error inserting generated tasks:", error.message);
+        for (const payload of taskPayloads) {
+          const { data: existing } = await supabase
+            .from("tasks")
+            .select("id")
+            .eq("user_id", userId)
+            .ilike("title", payload.title.trim())
+            .eq("status", "todo")
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            await supabase
+              .from("tasks")
+              .update(payload as any)
+              .eq("id", existing[0].id);
+          } else {
+            await supabase
+              .from("tasks")
+              .insert(payload as any);
+          }
         }
       }
 

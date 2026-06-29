@@ -64,6 +64,13 @@ export function NotificationCenter() {
   };
 
   useEffect(() => {
+    // Request native notification permission on mount
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+
     loadNotifications();
 
     // Subscribe to realtime changes on notifications table
@@ -76,8 +83,35 @@ export function NotificationCenter() {
           schema: "public",
           table: "notifications",
         },
-        () => {
+        (payload: any) => {
           loadNotifications();
+
+          // If a new unread notification was inserted, trigger a native browser alert!
+          if (
+            payload.eventType === "INSERT" &&
+            !payload.new.read &&
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            const nativeNotif = new Notification(payload.new.title || "Clutch AI Notification", {
+              body: payload.new.message || "",
+              icon: "/favicon.ico"
+            });
+
+            nativeNotif.onclick = async () => {
+              window.focus();
+              // Mark as read in DB
+              await (supabase
+                .from("notifications") as any)
+                .update({ read: true })
+                .eq("id", payload.new.id);
+
+              if (payload.new.task_id) {
+                router.push("/tasks");
+              }
+            };
+          }
         }
       )
       .subscribe();

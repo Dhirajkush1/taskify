@@ -469,7 +469,27 @@ Provide the adjustments. Respond ONLY with a valid JSON matching this schema:
           risk_level: "low",
           completion_probability: 95,
         }));
-        await supabase.from("tasks").insert(newTasks);
+
+        for (const payload of newTasks) {
+          const { data: existing } = await supabase
+            .from("tasks")
+            .select("id")
+            .eq("user_id", userId)
+            .ilike("title", payload.title.trim())
+            .eq("status", "todo")
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            await supabase
+              .from("tasks")
+              .update(payload as any)
+              .eq("id", existing[0].id);
+          } else {
+            await supabase
+              .from("tasks")
+              .insert(payload as any);
+          }
+        }
       }
 
       // Log adaptive session

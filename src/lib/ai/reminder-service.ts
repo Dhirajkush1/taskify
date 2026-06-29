@@ -603,14 +603,22 @@ export class ReminderService {
         // Mark reminder as completed
         await supabase
           .from("reminders")
-          .update({ status: "completed" as any, updated_at: nowIso } as any)
+            .update({ status: "completed" as any, updated_at: nowIso } as any)
           .eq("id", reminderId);
 
         // If it has an associated task, mark task as done
         if (reminder.task_id) {
+          const { data: task } = await supabase
+            .from("tasks")
+            .select("category")
+            .eq("id", reminder.task_id)
+            .maybeSingle();
+
+          const finalStatus = (task as any)?.category === "Emergency" ? "archived" : "done";
+
           await supabase
             .from("tasks")
-            .update({ status: "done" as any, completion_percentage: 100, updated_at: nowIso })
+            .update({ status: finalStatus as any, completion_percentage: 100, updated_at: nowIso } as any)
             .eq("id", reminder.task_id);
 
           await supabase.from("activity_logs").insert({
