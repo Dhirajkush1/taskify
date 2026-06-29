@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { 
@@ -38,7 +38,7 @@ export default function AdminRemindersPage() {
 
   const supabase = createClient();
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from("telegram_sync_logs")
@@ -50,11 +50,11 @@ export default function AdminRemindersPage() {
       setLogs(data as any);
     }
     setIsLoading(false);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [fetchLogs]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -147,7 +147,7 @@ export default function AdminRemindersPage() {
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-neutral-200 truncate">
-                      "{log.telegram_message}"
+                      &ldquo;{log.telegram_message}&rdquo;
                     </p>
                   </div>
 
