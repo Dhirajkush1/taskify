@@ -48,6 +48,30 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
   const metadata = message.metadata; // Our AutonomousAIOutput parsed object
   const [completedSubtasks, setCompletedSubtasks] = useState<Record<string, boolean>>({});
+  const [actionProcessing, setActionProcessing] = useState<string | null>(null);
+  const [actionDoneMsg, setActionDoneMsg] = useState<string | null>(null);
+
+  const handleWebAction = async (actionName: string, reminderId: string) => {
+    setActionProcessing(actionName);
+    try {
+      const res = await fetch("/api/reminders/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: actionName, reminderId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionDoneMsg(data.message || "Action processed successfully.");
+      } else {
+        alert(data.error || "Failed to process action.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Network error.");
+    } finally {
+      setActionProcessing(null);
+    }
+  };
 
   const toggleSubtask = (taskId: string, subtaskIndex: number) => {
     const key = `${taskId}-${subtaskIndex}`;
@@ -202,6 +226,56 @@ export function ChatMessage({ message }: ChatMessageProps) {
             </div>
           )}
         </div>
+
+        {/* Web Follow-up Buttons */}
+        {!isUser && metadata?.type === "follow_up" && metadata?.reminder_id && (
+          <div className="mt-2 flex flex-col gap-2 p-3 rounded-xl border border-violet-500/20 bg-violet-500/5 max-w-sm w-fit">
+            <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+              Quick Action Response
+            </span>
+            {actionDoneMsg ? (
+              <span className="text-xs text-neutral-300 font-semibold">{actionDoneMsg}</span>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  disabled={!!actionProcessing}
+                  onClick={() => handleWebAction("started", metadata.reminder_id)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white transition-all cursor-pointer disabled:opacity-50"
+                >
+                  🚀 Started
+                </button>
+                <button
+                  disabled={!!actionProcessing}
+                  onClick={() => handleWebAction("followup_busy", metadata.reminder_id)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  🤕 Busy
+                </button>
+                <button
+                  disabled={!!actionProcessing}
+                  onClick={() => handleWebAction("help", metadata.reminder_id)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  🤝 Need Help
+                </button>
+                <button
+                  disabled={!!actionProcessing}
+                  onClick={() => handleWebAction("later", metadata.reminder_id)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  ⏰ Later
+                </button>
+                <button
+                  disabled={!!actionProcessing}
+                  onClick={() => handleWebAction("skip", metadata.reminder_id)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-red-950/40 hover:bg-red-900/40 text-red-400 border border-red-900/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  ❌ Skip
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Structured Autonomous Widgets (Only if metadata is parsed and present) */}
         {!isUser && metadata && (
