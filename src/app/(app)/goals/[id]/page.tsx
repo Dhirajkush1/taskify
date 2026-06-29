@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Target, Calendar, Flame, AlertCircle, Activity, 
@@ -71,7 +71,8 @@ interface Goal {
   }>;
 }
 
-export default function GoalDetailPage({ params }: { params: { id: string } }) {
+export default function GoalDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
   const [goal, setGoal] = useState<Goal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,7 +95,7 @@ export default function GoalDetailPage({ params }: { params: { id: string } }) {
 
   const fetchGoalDetails = async () => {
     try {
-      const res = await fetch(`/api/goals/${params.id}`);
+      const res = await fetch(`/api/goals/${id}`);
       if (!res.ok) throw new Error("Goal not found");
       const data = await res.json();
       setGoal(data);
@@ -108,7 +109,8 @@ export default function GoalDetailPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     fetchGoalDetails();
-  }, [params.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Submit checkin
   const handleCheckinSubmit = async (e: React.FormEvent) => {
@@ -116,7 +118,7 @@ export default function GoalDetailPage({ params }: { params: { id: string } }) {
     setSubmittingCheckin(true);
 
     try {
-      const res = await fetch(`/api/goals/${params.id}/checkin`, {
+      const res = await fetch(`/api/goals/${id}/checkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -146,7 +148,7 @@ export default function GoalDetailPage({ params }: { params: { id: string } }) {
     setSimulationResult(null);
 
     try {
-      const res = await fetch(`/api/goals/${params.id}/simulate`, {
+      const res = await fetch(`/api/goals/${id}/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scenario: simulationPrompt }),
@@ -171,7 +173,7 @@ export default function GoalDetailPage({ params }: { params: { id: string } }) {
     setReplanResult(null);
 
     try {
-      const res = await fetch(`/api/goals/${params.id}/replan`, {
+      const res = await fetch(`/api/goals/${id}/replan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ incident: replanPrompt }),
@@ -289,11 +291,13 @@ export default function GoalDetailPage({ params }: { params: { id: string } }) {
 
           <div className="flex-1 py-4 flex flex-col justify-center">
             <blockquote className="text-xs italic text-slate-600 leading-relaxed font-semibold">
-              "{goal.health_score >= 80 
+              &ldquo;
+              {goal.health_score >= 80 
                 ? "Excellent consistency! Your current momentum guarantees we hit our milestone deadlines early. Maintain the water and habit routine." 
                 : goal.health_score >= 50
                 ? "We are falling slightly behind on our milestone target dates. Skipping tasks today reduces success probability. Focus on critical tasks."
-                : "Emergency mode required. Missed tasks have pushed progress into risk zones. Run the Adaptive Replanner below to modify requirements."}"
+                : "Emergency mode required. Missed tasks have pushed progress into risk zones. Run the Adaptive Replanner below to modify requirements."}
+              &rdquo;
             </blockquote>
           </div>
 

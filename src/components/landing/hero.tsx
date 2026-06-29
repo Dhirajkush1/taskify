@@ -145,6 +145,7 @@ export function Hero() {
     }
 
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simText, simPhase, simIndex, resultsToShow]);
 
   return (
