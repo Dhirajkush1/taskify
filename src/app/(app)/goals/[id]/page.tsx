@@ -232,18 +232,18 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
       {/* Main Goal info cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Basic Stats card */}
-        <div className="glass p-6 rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col justify-between lg:col-span-2">
+        <div className="glass p-6 rounded-2xl lg:col-span-2 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 capitalize">
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white/5 text-slate-400 capitalize">
                 {goal.category}
               </span>
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 capitalize">
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 capitalize">
                 {goal.term?.replace("_", " ")}
               </span>
             </div>
 
-            <h2 className="text-xl font-black text-slate-800 mt-4">{goal.title}</h2>
+            <h2 className="text-xl font-black text-white mt-4">{goal.title}</h2>
             <p className="text-xs text-slate-400 font-semibold mt-1">{goal.description}</p>
 
             {/* Target dates */}
@@ -253,7 +253,7 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 border-t border-slate-100 mt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 border-t border-white/5 mt-6">
             <div>
               <span className="text-slate-400 font-bold uppercase text-[9px]">Goal Health</span>
               <p className={cn("text-sm font-black mt-0.5", healthBadgeColor.split(" ")[0])}>
@@ -268,7 +268,7 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
             </div>
             <div>
               <span className="text-slate-400 font-bold uppercase text-[9px]">Consistency</span>
-              <p className="text-sm font-black text-slate-800 mt-0.5">
+              <p className="text-sm font-black text-white mt-0.5">
                 {goal.consistency}%
               </p>
             </div>
@@ -283,14 +283,14 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
         </div>
 
         {/* AI Coach recommendation card */}
-        <div className="glass p-6 rounded-2xl border border-slate-200 bg-violet-50/10 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+        <div className="glass p-6 rounded-2xl border border-white/10 bg-violet-950/20 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center gap-2 border-b border-white/5 pb-3">
             <Sparkles className="w-5 h-5 text-violet-500" />
-            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">AI Goal Coach</h3>
+            <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">AI Goal Coach</h3>
           </div>
 
           <div className="flex-1 py-4 flex flex-col justify-center">
-            <blockquote className="text-xs italic text-slate-600 leading-relaxed font-semibold">
+            <blockquote className="text-xs italic text-slate-300 leading-relaxed font-semibold">
               &ldquo;
               {goal.health_score >= 80 
                 ? "Excellent consistency! Your current momentum guarantees we hit our milestone deadlines early. Maintain the water and habit routine." 
@@ -311,18 +311,18 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Vertical Timeline Card (Milestones + Tasks) */}
-        <div className="glass p-6 rounded-2xl border border-slate-200 bg-white shadow-sm lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="glass p-6 rounded-2xl border border-white/10 lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between border-b border-white/5 pb-4">
             <div className="flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-slate-600" />
-              <h3 className="text-sm font-black text-slate-800">Milestone Roadmap Timeline</h3>
+              <ClipboardList className="w-5 h-5 text-slate-400" />
+              <h3 className="text-sm font-black text-white">Milestone Roadmap Timeline</h3>
             </div>
             <span className="text-[10px] font-bold text-slate-500">
               Tasks: {completedTasks} / {totalTasks} ({taskProgressPct}%)
             </span>
           </div>
 
-          <div className="space-y-6 relative pl-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-100">
+          <div className="space-y-6 relative pl-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] before:bg-white/5">
             {goal.milestones?.map((ms, index) => {
               const msDone = ms.status === "done";
               return (
@@ -330,8 +330,8 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
                   {/* Circle dot on line */}
                   <div 
                     className={cn(
-                      "absolute -left-[21px] top-1 w-4 h-4 rounded-full border-2 bg-white flex items-center justify-center",
-                      msDone ? "border-emerald-500 bg-emerald-50" : "border-slate-300"
+                      "absolute -left-[21px] top-1 w-4 h-4 rounded-full border-2 bg-slate-900 flex items-center justify-center",
+                      msDone ? "border-emerald-500 bg-emerald-50" : "border-slate-750"
                     )}
                   >
                     {msDone && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500" />}
@@ -339,7 +339,7 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
 
                   <div>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <h4 className={cn("text-xs font-black", msDone ? "text-slate-500 line-through" : "text-slate-800")}>
+                      <h4 className={cn("text-xs font-black", msDone ? "text-slate-500 line-through" : "text-white")}>
                         {ms.title}
                       </h4>
                       <span className="text-[10px] text-slate-400 font-bold uppercase">
@@ -359,12 +359,12 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
                         return (
                           <div 
                             key={task.id} 
-                            className="flex items-start justify-between p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors text-xs"
+                            className="flex items-start justify-between p-2.5 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors text-xs"
                           >
                             <div className="flex items-start gap-2">
-                              <CheckSquare className={cn("w-4 h-4 mt-0.5", taskDone ? "text-emerald-500" : "text-slate-300")} />
+                              <CheckSquare className={cn("w-4 h-4 mt-0.5", taskDone ? "text-emerald-500" : "text-slate-500")} />
                               <div>
-                                <p className={cn("font-bold text-slate-700", taskDone && "text-slate-400 line-through")}>
+                                <p className={cn("font-bold text-slate-200", taskDone && "text-slate-500 line-through")}>
                                   {task.title}
                                 </p>
                                 {task.description && (
@@ -374,7 +374,7 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
                             </div>
 
                             {task.priority === "critical" && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 uppercase">
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 uppercase">
                                 Critical
                               </span>
                             )}
@@ -388,13 +388,13 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
                   {(ms.reward || ms.risk) && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4 pt-1">
                       {ms.reward && (
-                        <div className="p-2 rounded-lg bg-emerald-50/30 border border-emerald-100/30 text-[10px] text-emerald-700">
+                        <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-400">
                           <span className="font-bold uppercase tracking-wider block mb-0.5">Achievement Reward</span>
                           {ms.reward}
                         </div>
                       )}
                       {ms.risk && (
-                        <div className="p-2 rounded-lg bg-rose-50/30 border border-rose-100/30 text-[10px] text-rose-700">
+                        <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-400">
                           <span className="font-bold uppercase tracking-wider block mb-0.5">Risk Warning</span>
                           {ms.risk}
                         </div>
@@ -410,10 +410,10 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
         {/* Interactive What-If Simulation and Replanning panels */}
         <div className="space-y-6">
           {/* What-If Panel */}
-          <div className="glass p-6 rounded-2xl border border-slate-200 bg-white shadow-sm space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <HelpCircle className="w-5 h-5 text-indigo-500" />
-              <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">What-If Simulation</h3>
+          <div className="glass p-6 rounded-2xl border border-white/10 bg-white/5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+              <HelpCircle className="w-5 h-5 text-indigo-400" />
+              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">What-If Simulation</h3>
             </div>
 
             <form onSubmit={handleRunSimulation} className="space-y-3">
@@ -422,7 +422,7 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
                 placeholder="e.g. What if I skip work for 3 days?"
                 value={simulationPrompt}
                 onChange={(e) => setSimulationPrompt(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:border-violet-500"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-white/10 bg-white/5 text-white focus:border-violet-500"
               />
               <button
                 type="submit"
@@ -476,10 +476,10 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
           </div>
 
           {/* Adaptive Replanning Panel */}
-          <div className="glass p-6 rounded-2xl border border-slate-200 bg-white shadow-sm space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <Activity className="w-5 h-5 text-emerald-500 animate-pulse" />
-              <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Adaptive Replanner</h3>
+          <div className="glass p-6 rounded-2xl border border-white/10 bg-white/5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+              <Activity className="w-5 h-5 text-emerald-400 animate-pulse" />
+              <h3 className="text-xs font-extrabold text-white tracking-wider uppercase">Adaptive Replanner</h3>
             </div>
 
             <form onSubmit={handleAdaptPlan} className="space-y-3">
@@ -488,7 +488,7 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
                 placeholder="e.g. I injured my shoulder / I travel tomorrow"
                 value={replanPrompt}
                 onChange={(e) => setReplanPrompt(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:border-violet-500"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-white/10 bg-white/5 text-white focus:border-violet-500"
               />
               <button
                 type="submit"
@@ -536,13 +536,13 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4"
+              className="glass-strong rounded-3xl max-w-md w-full p-6 shadow-xl space-y-4"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="text-sm font-black text-slate-800">Goal Progress Check-In</h3>
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <h3 className="text-sm font-black text-white">Goal Progress Check-In</h3>
                 <button 
                   onClick={() => setShowCheckinModal(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-800"
+                  className="text-xs font-bold text-slate-400 hover:text-slate-200"
                 >
                   Cancel
                 </button>
@@ -567,13 +567,13 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
 
                 {/* notes */}
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500">Progress Notes / Journal</label>
+                  <label className="text-xs font-bold text-slate-400">Progress Notes / Journal</label>
                   <textarea
                     rows={3}
                     placeholder="Describe how your roadmap is executing, weight updates, or challenges today..."
                     value={checkinNotes}
                     onChange={(e) => setCheckinNotes(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-white/10 bg-white/5 text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
                   />
                 </div>
 
