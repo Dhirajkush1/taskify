@@ -19,8 +19,14 @@ export interface GoogleEventInput {
 
 export class GoogleCalendarClient {
   private static get clientCredentials() {
-    const clientId = process.env.GOOGLE_CLIENT_ID || "263488702458-p9gapkd0ihckrk8t4ac14v7buogq9gb5.apps.googleusercontent.com";
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "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";
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId) {
+      throw new Error("Missing required environment variable: GOOGLE_CLIENT_ID");
+    }
+    if (!clientSecret) {
+      throw new Error("Missing required environment variable: GOOGLE_CLIENT_SECRET");
+    }
     return { clientId, clientSecret };
   }
 

@@ -321,7 +321,10 @@ export class CalendarSyncService {
    */
   static async watchCalendar(userId: string, calendarId: string): Promise<boolean> {
     const supabase = createServiceClient() as any;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://taskify-one-bice.vercel.app";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      throw new Error("Missing required environment variable: NEXT_PUBLIC_APP_URL");
+    }
     const webhookUrl = `${appUrl}/api/webhooks/google-calendar`;
     const channelId = crypto.randomUUID();
 

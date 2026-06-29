@@ -14,9 +14,35 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Build Google OAuth URL parameters
-    const clientId = process.env.GOOGLE_CLIENT_ID || "263488702458-p9gapkd0ihckrk8t4ac14v7buogq9gb5.apps.googleusercontent.com";
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const redirectUri = `${appUrl}/api/auth/google/callback`;
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+    // Structured logging for debugging
+    console.log("[OAuthLogin] Redirection parameters audit:", {
+      APP_URL: appUrl,
+      REDIRECT_URI: redirectUri,
+      CLIENT_ID: clientId,
+      VERCEL_URL: process.env.VERCEL_URL,
+      NODE_ENV: process.env.NODE_ENV,
+      Origin: request.nextUrl.origin,
+      Host: request.headers.get("host"),
+      Headers: Object.fromEntries(request.headers.entries()),
+    });
+
+    if (!clientId) {
+      throw new Error("Missing required environment variable: GOOGLE_CLIENT_ID");
+    }
+    if (!clientSecret) {
+      throw new Error("Missing required environment variable: GOOGLE_CLIENT_SECRET");
+    }
+    if (!redirectUri) {
+      throw new Error("Missing required environment variable: GOOGLE_REDIRECT_URI");
+    }
+    if (!appUrl) {
+      throw new Error("Missing required environment variable: NEXT_PUBLIC_APP_URL");
+    }
     
     const scopes = [
       "https://www.googleapis.com/auth/calendar",
@@ -35,6 +61,8 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set("access_type", "offline"); // Crucial for getting a refresh token
     authUrl.searchParams.set("prompt", "consent"); // Force consent screen to guarantee refresh token is returned
     authUrl.searchParams.set("state", state);
+
+    console.log("[OAuthLogin] Generated Google OAuth Redirection URL:", authUrl.toString());
 
     return NextResponse.redirect(authUrl.toString());
   } catch (err: any) {

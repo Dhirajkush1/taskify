@@ -39,10 +39,35 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Exchange code for access & refresh tokens
-    const clientId = process.env.GOOGLE_CLIENT_ID || "263488702458-p9gapkd0ihckrk8t4ac14v7buogq9gb5.apps.googleusercontent.com";
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "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";
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const redirectUri = `${appUrl}/api/auth/google/callback`;
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+    // Structured logging for debugging
+    console.log("[OAuthCallback] Token exchange parameters audit:", {
+      APP_URL: appUrl,
+      REDIRECT_URI: redirectUri,
+      CLIENT_ID: clientId,
+      VERCEL_URL: process.env.VERCEL_URL,
+      NODE_ENV: process.env.NODE_ENV,
+      Origin: request.nextUrl.origin,
+      Host: request.headers.get("host"),
+      Headers: Object.fromEntries(request.headers.entries()),
+    });
+
+    if (!clientId) {
+      throw new Error("Missing required environment variable: GOOGLE_CLIENT_ID");
+    }
+    if (!clientSecret) {
+      throw new Error("Missing required environment variable: GOOGLE_CLIENT_SECRET");
+    }
+    if (!redirectUri) {
+      throw new Error("Missing required environment variable: GOOGLE_REDIRECT_URI");
+    }
+    if (!appUrl) {
+      throw new Error("Missing required environment variable: NEXT_PUBLIC_APP_URL");
+    }
 
     console.log("[OAuthCallback] Exchanging authorization code for tokens...");
     
