@@ -8,6 +8,7 @@ import { NotificationCenter } from "./notification-center";
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": { title: "Dashboard", subtitle: "Your mission overview" },
   "/mission-control": { title: "Mission Control", subtitle: "Talk to your AI companion" },
+  "/goals": { title: "Goals", subtitle: "Define your destination and execute" },
   "/tasks": { title: "Tasks", subtitle: "Manage your missions" },
   "/calendar": { title: "Calendar", subtitle: "Plan your timeline" },
   "/settings": { title: "Settings", subtitle: "Configure your experience" },
