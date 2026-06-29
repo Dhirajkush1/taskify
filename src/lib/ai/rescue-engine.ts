@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database.types";
 import { AIClient } from "@/lib/ai/providers";
 import type { Task } from "@/types/app.types";
+import { addMinutes } from "date-fns";
 
 export type EmergencyStep = {
   step: string;
@@ -178,6 +179,9 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id" });
 
+      // Automatically sync Rescue Plan emergency sessions to Google Calendar
+      await this.syncRescuePlanToCalendar(userId, planData, supabase);
+
       // Log event in activity_logs
       await supabase.from("activity_logs").insert({
         user_id: userId,
@@ -228,11 +232,111 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
   }
 
   /**
+   * Syncs the emergency action plan focus steps to Supabase and Google Calendar.
+   */
+  private static async syncRescuePlanToCalendar(
+    userId: string,
+    planData: RescuePlanData,
+    supabase: any
+  ): Promise<void> {
+    try {
+      console.log(`[RescueEngine] Syncing rescue action plan to calendar for user ${userId}...`);
+      const nowStr = new Date().toISOString();
+
+      // 1. Delete all existing focus blocks starting after now
+      const { data: focusBlocks } = await supabase
+        .from("calendar_events")
+        .select("id, google_event_id, calendar_id")
+        .eq("user_id", userId)
+        .eq("event_type", "focus_block")
+        .gte("start_time", nowStr);
+
+      if (focusBlocks && focusBlocks.length > 0) {
+        const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+        for (const block of focusBlocks) {
+          await supabase.from("calendar_events").delete().eq("id", block.id);
+          if (block.google_event_id) {
+            await CalendarSyncService.deleteLocalEventFromGoogle(userId, block.google_event_id, block.calendar_id);
+          }
+        }
+      }
+
+      // 2. Schedule emergency steps from planData.emergency_action_plan
+      const focusSteps = planData.emergency_action_plan.filter(step => step.type === "focus");
+      if (focusSteps.length === 0) return;
+
+      const { CalendarAiService } = await import("@/lib/ai/calendar-ai-service");
+      const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+
+      const primaryCal = await supabase
+        .from("google_calendars")
+        .select("calendar_id")
+        .eq("user_id", userId)
+        .eq("primary", true)
+        .maybeSingle();
+      const calendarId = primaryCal?.data?.calendar_id || "primary";
+
+      let scheduledCount = 0;
+
+      // Fit each step in availability windows sequentially
+      for (const step of focusSteps) {
+        let scheduled = false;
+        let dayOffset = 0;
+
+        while (!scheduled && dayOffset < 5) {
+          const dateToSearch = new Date(Date.now() + dayOffset * 24 * 3600 * 1000);
+          const freeSlots = await CalendarAiService.getAvailableSlots(userId, dateToSearch, supabase);
+
+          for (const slot of freeSlots) {
+            const slotStart = new Date(slot.start);
+            const slotEnd = new Date(slot.end);
+            const slotDuration = (slotEnd.getTime() - slotStart.getTime()) / 60000;
+
+            if (slotDuration >= step.duration) {
+              const blockStart = slotStart;
+              const blockEnd = addMinutes(blockStart, step.duration);
+
+              const { data: event, error: insertError } = await supabase
+                .from("calendar_events")
+                .insert({
+                  user_id: userId,
+                  title: `🚨 Rescue Focus: ${step.step}`,
+                  description: `Emergency rescue focus session (duration: ${step.duration} mins).`,
+                  start_time: blockStart.toISOString(),
+                  end_time: blockEnd.toISOString(),
+                  event_type: "focus_block",
+                  status: "confirmed",
+                  visibility: "busy",
+                  calendar_id: calendarId
+                })
+                .select("id")
+                .single();
+
+              if (!insertError && event) {
+                await CalendarSyncService.pushLocalEventToGoogle(userId, event.id, supabase);
+                scheduled = true;
+                scheduledCount++;
+                break;
+              }
+            }
+          }
+          dayOffset++;
+        }
+      }
+
+      console.log(`[RescueEngine] Scheduled ${scheduledCount} emergency sessions on Google Calendar.`);
+    } catch (err) {
+      console.error("[RescueEngine] Failed to sync rescue plan to calendar:", err);
+    }
+  }
+
+  /**
    * Deactivates rescue mode.
    */
   static async deactivateRescue(userId: string): Promise<void> {
     const supabase = await createClient();
-    await supabase
+    const sp = supabase as any;
+    await sp
       .from("rescue_plans")
       .upsert({
         user_id: userId,
@@ -241,7 +345,37 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
         emergency_action_plan: []
       }, { onConflict: "user_id" });
 
-    await supabase.from("activity_logs").insert({
+    // Delete rescue focus blocks to restore normal timeline
+    try {
+      const nowStr = new Date().toISOString();
+      const { data: rescueEvents } = await sp
+        .from("calendar_events")
+        .select("id, google_event_id, calendar_id")
+        .eq("user_id", userId)
+        .eq("event_type", "focus_block")
+        .ilike("title", "🚨 Rescue Focus%")
+        .gte("start_time", nowStr);
+
+      if (rescueEvents && rescueEvents.length > 0) {
+        const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+        for (const re of rescueEvents) {
+          await sp.from("calendar_events").delete().eq("id", re.id);
+          if (re.google_event_id) {
+            await CalendarSyncService.deleteLocalEventFromGoogle(userId, re.google_event_id, re.calendar_id);
+          }
+        }
+      }
+      
+      // Reschedule normal tasks to fill availability
+      const { PlannerService } = await import("@/lib/ai/planner-service");
+      await PlannerService.regenerateTimeBlockPlan(userId).catch(err => {
+        console.error("[RescueEngine] Post-deactivation replan failed:", err);
+      });
+    } catch (cleanErr) {
+      console.error("[RescueEngine] Error cleaning rescue calendar events:", cleanErr);
+    }
+
+    await sp.from("activity_logs").insert({
       user_id: userId,
       action: "RescueModeDeactivated",
       entity_type: "system",

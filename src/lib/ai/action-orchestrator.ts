@@ -474,6 +474,18 @@ ${context.promptContextString}
             }
           }
         }
+
+        // Trigger AI Focus Time Blocking for new tasks
+        for (const taskId of createdTasks) {
+          try {
+            const { CalendarAiService } = await import("@/lib/ai/calendar-ai-service");
+            CalendarAiService.scheduleFocusBlocks(userId, taskId, supabase).catch(err => {
+              console.error(`[ActionOrchestrator] Non-blocking focus scheduling fail for task ${taskId}:`, err);
+            });
+          } catch (importErr) {
+            console.error("[ActionOrchestrator] Failed to import CalendarAiService:", importErr);
+          }
+        }
       }
 
       // 4. Process Extracted Reminders

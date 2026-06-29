@@ -5,9 +5,11 @@ import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database.types";
 import { 
   Bell, Brain, Moon, Shield, Loader2, Sparkles, 
-  Send, Check, Copy, ExternalLink, RefreshCw, AlertCircle, Trash2, Clock
+  Send, Check, Copy, ExternalLink, RefreshCw, AlertCircle, Trash2, Clock,
+  Calendar, Link2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>(null);
@@ -15,6 +17,11 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   
   const supabase = useMemo(() => createClient(), []);
+
+  // Google Calendar Integration State
+  const [googleAccount, setGoogleAccount] = useState<any>(null);
+  const [googleCalendars, setGoogleCalendars] = useState<any[]>([]);
+  const [syncingGoogle, setSyncingGoogle] = useState(false);
 
   // Telegram Integration State
   const [telegramStatus, setTelegramStatus] = useState<{
@@ -83,6 +90,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     let channel: any;
+    let gAcctChannel: any;
+    
     async function loadSettings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -97,6 +106,52 @@ export default function SettingsPage() {
 
         // Fetch Telegram status
         await loadTelegramStatus();
+
+        // Fetch Google Account linkage
+        const { data: gAcct } = await supabase
+          .from("google_accounts")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        setGoogleAccount(gAcct);
+
+        if (gAcct) {
+          const { data: gCals } = await supabase
+            .from("google_calendars")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("primary", { ascending: false });
+          setGoogleCalendars(gCals || []);
+        }
+
+        // Subscribe to real-time changes on Google Accounts to auto-detect login completion!
+        gAcctChannel = supabase
+          .channel("google-account-sync")
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "google_accounts",
+              filter: `user_id=eq.${user.id}`
+            },
+            async (payload: any) => {
+              console.log("[Settings] Google account table change detected:", payload);
+              if (payload.new && payload.new.id) {
+                setGoogleAccount(payload.new);
+                const { data: gCals } = await supabase
+                  .from("google_calendars")
+                  .select("*")
+                  .eq("user_id", user.id)
+                  .order("primary", { ascending: false });
+                setGoogleCalendars(gCals || []);
+              } else if (payload.eventType === "DELETE") {
+                setGoogleAccount(null);
+                setGoogleCalendars([]);
+              }
+            }
+          )
+          .subscribe();
 
         // Subscribe to real-time changes on telegram_accounts to auto-detect handshake completion!
         channel = supabase
@@ -136,9 +191,8 @@ export default function SettingsPage() {
     loadSettings();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      if (channel) supabase.removeChannel(channel);
+      if (gAcctChannel) supabase.removeChannel(gAcctChannel);
     };
   }, [supabase, loadTelegramStatus]);
 
@@ -256,6 +310,86 @@ export default function SettingsPage() {
       navigator.clipboard.writeText(telegramStatus.linkingCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  // Google Calendar Link Helpers
+  const disconnectGoogle = async () => {
+    setSaving("disconnect_google");
+    try {
+      const res = await fetch("/api/auth/google/disconnect", { method: "POST" });
+      if (res.ok) {
+        setGoogleAccount(null);
+        setGoogleCalendars([]);
+        toast.success("Google Account disconnected.");
+      } else {
+        toast.error("Failed to disconnect Google.");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error disconnecting Google.");
+    }
+    setSaving(null);
+  };
+
+  const toggleGoogleCalendar = async (calendarId: string) => {
+    const updated = googleCalendars.map(c => 
+      c.calendar_id === calendarId ? { ...c, selected: !c.selected } : c
+    );
+    setGoogleCalendars(updated);
+
+    const selectedIds = updated.filter(c => c.selected).map(c => c.calendar_id);
+    
+    try {
+      const res = await fetch("/api/calendar/select-calendars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedCalendarIds: selectedIds })
+      });
+
+      if (!res.ok) throw new Error();
+      toast.success("Calendars updated.");
+    } catch (err) {
+      toast.error("Failed to update calendars.");
+      // Rollback
+      setGoogleCalendars(googleCalendars.map(c => c.calendar_id === calendarId ? { ...c, selected: !c.selected } : c));
+    }
+  };
+
+  const updateGoogleSyncMode = async (mode: string) => {
+    if (!googleAccount) return;
+    setSaving("google_sync_mode");
+    const originalMode = googleAccount.sync_mode;
+    setGoogleAccount({ ...googleAccount, sync_mode: mode });
+
+    const { error } = await (supabase as any)
+      .from("google_accounts")
+      .update({ sync_mode: mode })
+      .eq("user_id", googleAccount.user_id);
+
+    if (error) {
+      setGoogleAccount({ ...googleAccount, sync_mode: originalMode });
+      toast.error("Failed to update sync mode.");
+    } else {
+      toast.success("Sync mode updated.");
+    }
+    setSaving(null);
+  };
+
+  const syncGoogleNow = async () => {
+    setSyncingGoogle(true);
+    toast.info("Syncing Google Calendar...");
+    try {
+      const res = await fetch("/api/calendar/sync", { method: "POST" });
+      if (res.ok) {
+        toast.success("Calendar sync complete!");
+      } else {
+        toast.error("Sync failed.");
+      }
+    } catch (err) {
+      toast.error("Sync request failed.");
+    } finally {
+      setSyncingGoogle(false);
     }
   };
 
@@ -444,6 +578,141 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      </motion.section>
+
+      {/* Google Calendar AI Integration */}
+      <motion.section
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.07 }}
+        className="rounded-2xl p-6 border relative overflow-hidden"
+        style={{
+          background: "var(--surface)",
+          borderColor: googleAccount ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.05)"
+        }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-violet-400" />
+            <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--text-primary)" }}>
+              Google Calendar AI OS Link
+            </h2>
+          </div>
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 ${
+              googleAccount
+                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                : "bg-neutral-800 text-neutral-400 border border-neutral-800"
+            }`}
+          >
+            {googleAccount ? "Connected" : "Disconnected"}
+          </span>
+        </div>
+
+        {!googleAccount ? (
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              Link your Google Calendar to synchronize external commitments. Clutch AI will automatically schedule deep-work focus sessions, buffers, and meeting preps.
+            </p>
+            <button
+              onClick={() => {
+                window.location.href = "/api/auth/google/login";
+              }}
+              className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-violet-500/10 transition-all cursor-pointer"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              Connect Google Account
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Connected header details */}
+            <div className="p-3.5 rounded-xl bg-neutral-900/40 border border-neutral-800 text-xs text-neutral-300 flex items-start justify-between gap-3">
+              <div>
+                <p className="font-bold text-neutral-200">Connected Google Account</p>
+                <p className="text-[11px] text-neutral-400 mt-0.5">{googleAccount.email}</p>
+              </div>
+              <button
+                onClick={syncGoogleNow}
+                disabled={syncingGoogle}
+                className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-neutral-300 hover:text-white transition-all disabled:opacity-50 cursor-pointer"
+                title="Sync calendar events now"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncingGoogle ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+
+            {/* Sync Mode */}
+            <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-violet-400">Sync Mode Direction</h3>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {[
+                  { value: "one_way_to_taskify", label: "One-Way 📥", desc: "Google ➔ Taskify only" },
+                  { value: "two_way", label: "Two-Way 🔄", desc: "Sync both directions" }
+                ].map((mode) => {
+                  const isActive = googleAccount.sync_mode === mode.value;
+                  return (
+                    <button
+                      key={mode.value}
+                      onClick={() => updateGoogleSyncMode(mode.value)}
+                      disabled={saving === "google_sync_mode"}
+                      className={`flex flex-col text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        isActive
+                          ? "border-violet-500 bg-violet-500/5"
+                          : "border-neutral-850 hover:border-neutral-750 bg-neutral-900/20"
+                      }`}
+                    >
+                      <span className="text-xs font-bold text-neutral-200">{mode.label}</span>
+                      <span className="text-[9px] text-neutral-500 mt-0.5">{mode.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Calendars checklist */}
+            <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-violet-400 mb-2">Tracked Calendars</h3>
+              <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                {googleCalendars.map((cal) => (
+                  <div key={cal.calendar_id} className="flex items-center justify-between py-1.5 border-b border-neutral-900/40 last:border-0">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-neutral-200">{cal.summary}</span>
+                      {cal.primary && <span className="text-[8px] font-bold text-violet-400 uppercase mt-0.5">Primary Calendar</span>}
+                    </div>
+                    <button
+                      onClick={() => toggleGoogleCalendar(cal.calendar_id)}
+                      className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                      style={{ background: cal.selected ? "var(--primary)" : "var(--surface-overlay)" }}
+                      type="button"
+                    >
+                      <div
+                        className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                        style={{ left: cal.selected ? "calc(100% - 18px)" : "2px" }}
+                      />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Disconnect Button */}
+            <div className="flex justify-end pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+              <button
+                onClick={disconnectGoogle}
+                disabled={saving === "disconnect_google"}
+                className="px-3 py-1.5 rounded-xl border border-rose-500/20 hover:bg-rose-500/5 text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                {saving === "disconnect_google" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                Disconnect Google Calendar
+              </button>
+            </div>
+          </div>
+        )}
       </motion.section>
 
       {/* 3. Telegram Bot Integration (Real-time Handshake Panel) */}

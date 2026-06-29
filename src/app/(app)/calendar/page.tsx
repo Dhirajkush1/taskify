@@ -1,288 +1,377 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { motion } from "framer-motion";
-import { Calendar as CalendarIcon, Clock, Sparkles, Loader2, RefreshCw } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Calendar as CalendarIcon, Clock, Sparkles, Loader2, RefreshCw, 
+  ChevronLeft, ChevronRight, MapPin, Users, Video, Plus, Eye, Grid, List, AlignLeft
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { triggerConfetti } from "@/components/shared/confetti-canvas";
 import { toast } from "sonner";
-import type { Task } from "@/types/app.types";
+import { 
+  format, startOfWeek, endOfWeek, eachDayOfInterval, addDays, subDays, 
+  isSameDay, addMonths, subMonths, startOfMonth, endOfMonth, parseISO, 
+  addMinutes, differenceInMinutes, setHours, setMinutes
+} from "date-fns";
 
-interface ScheduledBlock {
+interface CalendarEvent {
   id: string;
   title: string;
-  startHour: number; // e.g. 9 for 09:00
-  duration: number; // in hours, e.g. 1.5
-  priority: string;
+  description?: string;
+  location?: string;
+  meeting_link?: string;
+  start_time: string;
+  end_time: string;
+  event_type: "external" | "focus_block" | "travel_buffer" | "meeting_prep" | "task_block";
   status: string;
+  visibility: string;
+  guests?: Array<{ email: string; responseStatus: string }>;
+  task_id?: string;
+  ai_analysis?: any;
 }
 
+type ViewMode = "month" | "week" | "day" | "agenda" | "timeline";
+
 export default function CalendarPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [schedule, setSchedule] = useState<ScheduledBlock[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [scheduling, setScheduling] = useState(false);
-  const [settings, setSettings] = useState<{
-    timezone: string;
-    working_hours_start: string;
-    working_hours_end: string;
-  } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [useUtc, setUseUtc] = useState(false);
   
+  // Drag-and-drop state
+  const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
+  
+  // Resizing state
+  const [resizingEvent, setResizingEvent] = useState<{ id: string; originalEnd: Date } | null>(null);
+  const resizeStartY = useRef<number>(0);
+  const resizeStartHeight = useRef<number>(0);
+
   const supabase = useMemo(() => createClient(), []);
 
-  const formatHour = (hourDecimal: number) => {
-    const hours = Math.floor(hourDecimal);
-    const mins = hourDecimal % 1 === 0 ? "00" : "30";
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
-    return `${displayHours}:${mins} ${ampm}`;
-  };
-
-  const parseHour = (timeStr: string): number => {
-    const cleaned = timeStr.trim();
-    const match = cleaned.match(/^(\d+):(\d+)\s*(AM|PM|am|pm)?$/i);
-    if (!match) return 9;
-    
-    let hours = parseInt(match[1]);
-    const minutes = parseInt(match[2]);
-    const modifier = match[3];
-    
-    if (modifier?.toLowerCase() === "pm" && hours < 12) {
-      hours += 12;
+  // Timezone display helper
+  const displayTime = useCallback((isoString: string) => {
+    const date = new Date(isoString);
+    if (useUtc) {
+      return date.toUTCString().replace("GMT", "UTC");
     }
-    if (modifier?.toLowerCase() === "am" && hours === 12) {
-      hours = 0;
-    }
-    
-    return hours + minutes / 60;
-  };
+    return format(date, "h:mm a");
+  }, [useUtc]);
 
-  const loadTasksAndSchedule = useCallback(async () => {
+  // Load calendar events from endpoint
+  const loadEvents = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+      // Fetch 1 month bounds based on current date
+      const startRange = subDays(startOfMonth(currentDate), 7).toISOString();
+      const endRange = addDays(endOfMonth(currentDate), 7).toISOString();
 
-      // 1. Fetch settings, tasks, and daily execution plan in parallel
-      const [settingsRes, tasksRes, planRes] = await Promise.all([
-        supabase.from("settings").select("timezone, working_hours_start, working_hours_end").eq("user_id", user.id).maybeSingle(),
-        supabase.from("tasks").select("*").neq("status", "archived").order("priority_score", { ascending: false }),
-        supabase.from("execution_plans").select("plan_data").eq("user_id", user.id).eq("plan_type", "daily").maybeSingle()
-      ]);
+      const response = await fetch(`/api/calendar/events?start=${startRange}&end=${endRange}`);
+      if (!response.ok) throw new Error("Failed to fetch events");
 
-      const userSettings = settingsRes.data || { timezone: "UTC", working_hours_start: "09:00", working_hours_end: "17:00" };
-      setSettings(userSettings);
-
-      const activeTasks: Task[] = tasksRes.data || [];
-      setTasks(activeTasks);
-
-      const planData = planRes.data?.plan_data as { today?: string[] } | null;
-
-      // 2. Parse daily plan if present
-      if (planData && Array.isArray(planData.today) && planData.today.length > 0) {
-        const blocks: ScheduledBlock[] = [];
-        planData.today.forEach((line, index) => {
-          const match = line.match(/^(\d+:\d+\s*(?:AM|PM|am|pm))\s*-\s*(\d+:\d+\s*(?:AM|PM|am|pm)):\s*(.*)$/i);
-          if (match) {
-            const startStr = match[1];
-            const endStr = match[2];
-            const title = match[3].trim();
-            
-            const startHour = parseHour(startStr);
-            const endHour = parseHour(endStr);
-            const duration = Math.max(0.5, endHour - startHour);
-            
-            const matchedTask = activeTasks.find(t => 
-              t.title.toLowerCase().includes(title.toLowerCase()) || 
-              title.toLowerCase().includes(t.title.toLowerCase())
-            );
-            
-            blocks.push({
-              id: matchedTask?.id || `block-${index}`,
-              title: title,
-              startHour,
-              duration,
-              priority: matchedTask?.priority || "medium",
-              status: matchedTask?.status || "todo"
-            });
-          }
-        });
-        setSchedule(blocks);
-      } else {
-        // Fallback: Generate mock blocks from tasks
-        if (activeTasks.length > 0) {
-          const initialSchedule: ScheduledBlock[] = [];
-          let currentHour = parseHour(userSettings.working_hours_start || "09:00");
-          
-          activeTasks.slice(0, 4).forEach((t) => {
-            const durationMins = t.estimated_duration || 60;
-            const durationHours = Math.round((durationMins / 60) * 2) / 2 || 1;
-            
-            initialSchedule.push({
-              id: t.id,
-              title: t.title,
-              startHour: currentHour,
-              duration: durationHours,
-              priority: t.priority,
-              status: t.status,
-            });
-            currentHour += durationHours + 0.5;
-          });
-          setSchedule(initialSchedule);
-        } else {
-          setSchedule([]);
-        }
-      }
+      const payload = await response.json();
+      setEvents(payload.data || []);
     } catch (err: any) {
-      console.error("[Calendar] Error loading tasks/schedule:", err.message);
-      toast.error("Failed to load planner schedule.");
+      console.error(err);
+      toast.error("Failed to load calendar events.");
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [currentDate]);
 
   useEffect(() => {
-    loadTasksAndSchedule();
-  }, [loadTasksAndSchedule]);
+    loadEvents();
+  }, [loadEvents]);
 
-  // AI Auto-Scheduling Trigger
+  // Keyboard navigation shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if input is focused
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+        return;
+      }
+      
+      switch (e.key.toLowerCase()) {
+        case "t":
+          setCurrentDate(new Date());
+          break;
+        case "m":
+          setViewMode("month");
+          break;
+        case "w":
+          setViewMode("week");
+          break;
+        case "d":
+          setViewMode("day");
+          break;
+        case "a":
+          setViewMode("agenda");
+          break;
+        case "l":
+          setViewMode("timeline");
+          break;
+        case "arrowleft":
+          navigate(-1);
+          break;
+        case "arrowright":
+          navigate(1);
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [viewMode, currentDate]);
+
+  const navigate = (direction: number) => {
+    if (viewMode === "month") {
+      setCurrentDate(prev => direction > 0 ? addMonths(prev, 1) : subMonths(prev, 1));
+    } else if (viewMode === "week") {
+      setCurrentDate(prev => addDays(prev, direction * 7));
+    } else if (viewMode === "day" || viewMode === "timeline") {
+      setCurrentDate(prev => addDays(prev, direction));
+    } else {
+      setCurrentDate(prev => addDays(prev, direction * 3));
+    }
+  };
+
+  // Sync with Google Calendar manually
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/calendar/sync", { method: "POST" });
+      if (res.ok) {
+        toast.success("Google Calendar sync complete!");
+        loadEvents();
+      } else {
+        toast.error("Sync failed.");
+      }
+    } catch {
+      toast.error("Network error triggering sync.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // AI Auto-Schedule calculations
   const handleAutoSchedule = async () => {
-    setScheduling(true);
-    toast.info("Clutch AI is calculating non-overlapping work slots...");
-
+    setOptimizing(true);
+    toast.info("Clutch AI is block-scheduling pending tasks...");
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [
-            {
-              role: "user",
-              content: "Auto-schedule my current tasks into a balanced daily hour-blocked timeline. Return an execution plan.",
-            },
-          ],
-          provider: "gemini",
-        }),
+            { role: "user", content: "Optimize and block-schedule my focus blocks in calendar availability windows for today." }
+          ]
+        })
       });
 
       if (res.ok) {
-        await loadTasksAndSchedule();
+        toast.success("AI calendar optimization successful!");
         triggerConfetti();
-        toast.success("AI auto-scheduling completed! Calendar optimized.");
+        loadEvents();
       } else {
-        throw new Error("API responded with an error");
+        toast.error("Failed to auto-schedule.");
       }
     } catch {
-      toast.error("Auto-scheduling failed. Try again.");
+      toast.error("Auto-scheduling request failed.");
     } finally {
-      setScheduling(false);
+      setViewMode("day");
+      setOptimizing(false);
     }
   };
 
-  // Complete a task directly from the schedule
-  const handleCompleteTask = async (taskId: string) => {
+  // Native Drag and Drop handlers
+  const handleDragStart = (e: React.DragEvent, eventId: string) => {
+    setDraggingEventId(eventId);
+    e.dataTransfer.setData("text/plain", eventId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetDate: Date, targetHour: number) => {
+    e.preventDefault();
+    const eventId = e.dataTransfer.getData("text/plain") || draggingEventId;
+    if (!eventId) return;
+
+    setDraggingEventId(null);
+
+    // Calculate new start time
+    let newStart = setHours(targetDate, targetHour);
+    newStart = setMinutes(newStart, 0);
+
+    const originalEvent = events.find(ev => ev.id === eventId);
+    if (!originalEvent) return;
+
+    // Preserve duration
+    const duration = differenceInMinutes(
+      new Date(originalEvent.end_time),
+      new Date(originalEvent.start_time)
+    );
+    const newEnd = addMinutes(newStart, duration);
+
+    // Optimistic UI update
+    setEvents(prev => 
+      prev.map(ev => 
+        ev.id === eventId 
+          ? { ...ev, start_time: newStart.toISOString(), end_time: newEnd.toISOString() } 
+          : ev
+      )
+    );
+
+    try {
+      const response = await fetch(`/api/calendar/events/${eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start_time: newStart.toISOString(),
+          end_time: newEnd.toISOString()
+        })
+      });
+
+      if (!response.ok) throw new Error();
+      toast.success("Event rescheduled successfully.");
+      loadEvents(); // reload to confirm
+    } catch {
+      toast.error("Failed to reschedule event.");
+      loadEvents(); // rollback
+    }
+  };
+
+  // Event Card styling lookup based on type and status
+  const getEventStyle = (event: CalendarEvent) => {
+    if (event.status === "completed") {
+      return "bg-emerald-500/5 border-emerald-500/20 text-emerald-400 opacity-60";
+    }
+    
+    switch (event.event_type) {
+      case "focus_block":
+        return "bg-violet-500/10 border-violet-500/30 text-violet-300 shadow-sm shadow-violet-500/5";
+      case "travel_buffer":
+        return "bg-amber-500/5 border-amber-500/20 text-amber-300 border-dashed";
+      case "meeting_prep":
+        return "bg-cyan-500/10 border-cyan-500/25 text-cyan-300";
+      case "task_block":
+        return "bg-red-500/10 border-red-500/30 text-red-300";
+      default: // external GCal commitments
+        return "bg-neutral-900/90 border-neutral-800 text-neutral-200";
+    }
+  };
+
+  // Helper arrays for calendar views
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    return eachDayOfInterval({ start, end });
+  }, [currentDate]);
+
+  const hours = useMemo(() => {
+    const list = [];
+    for (let i = 8; i <= 20; i++) {
+      list.push(i);
+    }
+    return list;
+  }, []);
+
+  const handleCompleteTask = async (taskId: string, eventId: string) => {
     const { error } = await supabase
       .from("tasks")
       .update({ status: "done", completion_percentage: 100 })
       .eq("id", taskId);
 
     if (!error) {
-      setSchedule((prev) =>
-        prev.map((item) => (item.id === taskId ? { ...item, status: "done" } : item))
+      setEvents(prev => 
+        prev.map(item => item.id === eventId ? { ...item, status: "completed" } : item)
       );
       triggerConfetti();
-      toast.success("Task checked off! Celebration fired.");
-      loadTasksAndSchedule();
+      toast.success("Task completed successfully.");
     }
   };
-
-  // Shift block times and persist to Supabase
-  const shiftTime = async (blockId: string, hours: number) => {
-    const startLimit = settings ? parseHour(settings.working_hours_start) : 8;
-    const endLimit = settings ? parseHour(settings.working_hours_end) : 19;
-
-    const updatedSchedule = schedule.map((item) => {
-      if (item.id === blockId) {
-        const newStart = Math.min(Math.max(item.startHour + hours, startLimit), endLimit);
-        return { ...item, startHour: newStart };
-      }
-      return item;
-    });
-
-    setSchedule(updatedSchedule);
-
-    // Save updated execution plan lines
-    const lines = updatedSchedule.map(item => 
-      `${formatHour(item.startHour)} - ${formatHour(item.startHour + item.duration)}: ${item.title}`
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from("execution_plans").upsert({
-        user_id: user.id,
-        plan_type: "daily",
-        plan_data: { today: lines },
-        updated_at: new Date().toISOString()
-      }, { onConflict: "user_id, plan_type" });
-      
-      toast.success("Task rescheduled! Timeline synchronized.");
-    }
-  };
-
-  // Compile hourly slots for rendering
-  const timeSlots = useMemo(() => {
-    const slots = [];
-    const start = settings ? parseHour(settings.working_hours_start) : 8;
-    const end = settings ? parseHour(settings.working_hours_end) : 19;
-    for (let i = start; i <= end; i += 0.5) {
-      slots.push(i);
-    }
-    return slots;
-  }, [settings]);
-
-  if (loading) {
-    return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
-      </div>
-    );
-  }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      {/* Top Banner */}
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Upper Navigation Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-4" style={{ borderColor: "var(--border)" }}>
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-400">AI Daily Planner</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">Optimize your day, adjust time blocks, and complete missions.</p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20">
+            <CalendarIcon className="w-5 h-5 text-violet-400" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-neutral-100">
+              {viewMode === "month" && format(currentDate, "MMMM yyyy")}
+              {viewMode === "week" && `Week of ${format(weekDays[0], "MMM d, yyyy")}`}
+              {viewMode === "day" && format(currentDate, "EEEE, MMMM d, yyyy")}
+              {viewMode === "timeline" && `Timeline — ${format(currentDate, "MMM d")}`}
+              {viewMode === "agenda" && "Agenda Planner"}
+            </h1>
+            <p className="text-[11px] text-neutral-500 mt-0.5">Clutch Intelligent Calendar OS</p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* UTC vs Local timezone */}
           <button
-            onClick={loadTasksAndSchedule}
-            className="p-2 rounded-xl bg-white/5 border border-white/5 text-neutral-400 hover:text-white transition-all"
-            title="Reload tasks"
+            onClick={() => setUseUtc(!useUtc)}
+            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-white/5 bg-white/5 text-neutral-400 hover:text-white transition-all cursor-pointer"
           >
-            <RefreshCw className="w-4 h-4" />
+            {useUtc ? "Time: UTC" : "Time: Local"}
+          </button>
+
+          {/* Navigation Arrows */}
+          <div className="flex items-center bg-white/5 border border-white/5 rounded-xl overflow-hidden">
+            <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/5 text-neutral-400 hover:text-white cursor-pointer"><ChevronLeft className="w-4 h-4" /></button>
+            <button onClick={() => setCurrentDate(new Date())} className="px-3 py-2 text-xs font-semibold hover:bg-white/5 text-neutral-300 hover:text-white border-x border-neutral-900 cursor-pointer">Today</button>
+            <button onClick={() => navigate(1)} className="p-2 hover:bg-white/5 text-neutral-400 hover:text-white cursor-pointer"><ChevronRight className="w-4 h-4" /></button>
+          </div>
+
+          {/* View Toggles */}
+          <div className="flex items-center bg-white/5 border border-white/5 rounded-xl p-0.5">
+            {(["month", "week", "day", "agenda", "timeline"] as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  viewMode === mode 
+                    ? "bg-violet-600 text-white shadow" 
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-neutral-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer disabled:opacity-50"
+            title="Force Google Calendar Sync"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
           </button>
 
           <button
             onClick={handleAutoSchedule}
-            disabled={scheduling}
+            disabled={optimizing}
             className="px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-md hover:scale-[1.02] cursor-pointer disabled:opacity-50"
             style={{ background: "var(--primary)" }}
           >
-            {scheduling ? (
+            {optimizing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Optimizing...
+                Scheduling...
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4 animate-pulse" />
+                <Sparkles className="w-4 h-4 animate-pulse text-yellow-300" />
                 AI Auto-Schedule
               </>
             )}
@@ -290,146 +379,366 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: Daily timeline */}
-        <div className="lg:col-span-2 space-y-4">
-          <div
-            className="rounded-2xl p-5 border flex flex-col gap-4 overflow-hidden relative"
-            style={{
-              background: "var(--surface)",
-              borderColor: "var(--border)",
-            }}
-          >
-            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: "var(--border)" }}>
-              <span className="text-xs font-bold text-neutral-200 flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-violet-400" /> Today&apos;s Work Blocks
-              </span>
-              <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded-full text-neutral-400 font-bold">
-                {settings?.timezone || "UTC"}
-              </span>
-            </div>
+      {loading ? (
+        <div className="flex h-[50vh] items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-violet-400" />
+        </div>
+      ) : (
+        <div className="bg-neutral-950/40 rounded-3xl border p-4" style={{ borderColor: "var(--border)" }}>
+          <AnimatePresence mode="wait">
+            {viewMode === "day" && (
+              <motion.div
+                key="day"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-1"
+              >
+                <div className="grid grid-cols-12 border-b border-neutral-900 pb-2 mb-2">
+                  <div className="col-span-2 text-xs font-bold text-neutral-500 uppercase">Hour</div>
+                  <div className="col-span-10 text-xs font-bold text-neutral-400 uppercase">Commitments</div>
+                </div>
 
-            {/* Hourly Grid list */}
-            <div className="space-y-1 max-h-[480px] overflow-y-auto pr-1">
-              {timeSlots.map((slot) => {
-                const block = schedule.find(
-                  (item) => slot >= item.startHour && slot < item.startHour + item.duration
-                );
-                const isStart = block && slot === block.startHour;
+                {hours.map((hour) => {
+                  const dayEvents = events.filter(e => {
+                    const eventStart = new Date(e.start_time);
+                    return isSameDay(eventStart, currentDate) && eventStart.getHours() === hour;
+                  });
 
-                return (
-                  <div key={slot} className="flex items-start gap-4 min-h-12 border-b border-neutral-900/40 py-1">
-                    {/* Hour label */}
-                    <span className="text-[9px] font-mono font-bold text-neutral-500 w-16 pt-0.5">
-                      {slot % 1 === 0 ? formatHour(slot) : ""}
-                    </span>
+                  return (
+                    <div 
+                      key={hour} 
+                      className="grid grid-cols-12 min-h-16 border-b border-neutral-950/40 py-2 relative"
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, currentDate, hour)}
+                    >
+                      <div className="col-span-2 text-xs font-mono font-bold text-neutral-500">
+                        {hour === 12 ? "12:00 PM" : hour > 12 ? `${hour - 12}:00 PM` : `${hour}:00 AM`}
+                      </div>
+                      <div className="col-span-10 flex flex-col gap-2 relative">
+                        {dayEvents.map((event) => {
+                          const start = new Date(event.start_time);
+                          const end = new Date(event.end_time);
+                          const durationMins = differenceInMinutes(end, start);
+                          const cardHeight = Math.max(50, (durationMins / 60) * 60);
 
-                    {/* Timeline Slot content */}
-                    <div className="flex-1 relative min-h-8">
-                      {block ? (
-                        isStart && (
-                          <motion.div
-                            layoutId={`block-${block.id}`}
-                            className={`absolute inset-x-0 top-0 rounded-xl p-3 border shadow-sm z-10 flex flex-col justify-between ${
-                              block.status === "done"
-                                ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400"
-                                : block.priority === "critical"
-                                ? "bg-red-500/5 border-red-500/25 text-neutral-200"
-                                : block.priority === "high"
-                                ? "bg-orange-500/5 border-orange-500/25 text-neutral-200"
-                                : "bg-neutral-900/80 border-neutral-800 text-neutral-200"
-                            }`}
-                            style={{
-                              height: `${block.duration * 48}px`,
-                            }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
+                          return (
+                            <div
+                              key={event.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, event.id)}
+                              className={`rounded-xl p-3 border text-xs flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all select-none relative ${getEventStyle(event)}`}
+                              style={{ minHeight: `${cardHeight}px` }}
+                            >
                               <div>
-                                <h4 className={`text-xs font-bold leading-tight ${block.status === "done" ? "line-through opacity-50" : ""}`}>
-                                  {block.title}
-                                </h4>
-                                <span className="text-[9px] text-neutral-400 flex items-center gap-1 mt-1">
-                                  <Clock className="w-3 h-3" /> {formatHour(block.startHour)} - {formatHour(block.startHour + block.duration)}
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-bold tracking-tight text-neutral-100">{event.title}</h4>
+                                  
+                                  {event.task_id && event.status !== "completed" && (
+                                    <button
+                                      onClick={() => handleCompleteTask(event.task_id!, event.id)}
+                                      className="w-4 h-4 rounded bg-white/5 border border-white/10 flex items-center justify-center hover:bg-emerald-500/20 hover:border-emerald-500/30 text-emerald-400 cursor-pointer"
+                                    >
+                                      ✓
+                                    </button>
+                                  )}
+                                </div>
+                                <span className="text-[10px] opacity-60 flex items-center gap-1 mt-1">
+                                  <Clock className="w-3 h-3" /> {displayTime(event.start_time)} - {displayTime(event.end_time)}
                                 </span>
                               </div>
 
-                              {block.status !== "done" && !block.id.startsWith("block-") && (
-                                <button
-                                  onClick={() => handleCompleteTask(block.id)}
-                                  className="w-5 h-5 rounded-md flex items-center justify-center bg-white/5 border border-white/10 text-neutral-400 hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/20 transition-all cursor-pointer"
-                                >
-                                  ✓
-                                </button>
+                              {event.location && (
+                                <span className="text-[9px] opacity-50 flex items-center gap-1 mt-2">
+                                  <MapPin className="w-2.5 h-2.5" /> {event.location}
+                                </span>
                               )}
                             </div>
-
-                            {/* Rescheduling Shifts */}
-                            {block.status !== "done" && (
-                              <div className="flex justify-end gap-1.5 pt-2">
-                                <button
-                                  onClick={() => shiftTime(block.id, -0.5)}
-                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-neutral-400 hover:text-white"
-                                >
-                                  -30m
-                                </button>
-                                <button
-                                  onClick={() => shiftTime(block.id, 0.5)}
-                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-neutral-400 hover:text-white"
-                                >
-                                  +30m
-                                </button>
-                              </div>
-                            )}
-                          </motion.div>
-                        )
-                      ) : (
-                        <div className="h-full w-full border border-dashed border-neutral-900 rounded-xl hover:border-neutral-800 transition-all min-h-8" />
-                      )}
+                          );
+                        })}
+                      </div>
                     </div>
+                  );
+                })}
+              </motion.div>
+            )}
+
+            {viewMode === "week" && (
+              <motion.div
+                key="week"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="overflow-x-auto"
+              >
+                <div className="min-w-[800px]">
+                  {/* Grid Header days */}
+                  <div className="grid grid-cols-8 border-b border-neutral-900 pb-3 mb-2 text-center">
+                    <div className="text-left pl-2 text-xs font-bold text-neutral-500 uppercase">Hour</div>
+                    {weekDays.map((day) => {
+                      const isToday = isSameDay(day, new Date());
+                      return (
+                        <div key={day.toISOString()} className="flex flex-col items-center">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${isToday ? "text-violet-400" : "text-neutral-500"}`}>
+                            {format(day, "eee")}
+                          </span>
+                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mt-1 ${
+                            isToday ? "bg-violet-600 text-white" : "text-neutral-300"
+                          }`}>
+                            {format(day, "d")}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
 
-        {/* Right column: Task Queue lists */}
-        <div className="space-y-4">
-          <div
-            className="rounded-2xl p-5 border flex flex-col gap-4"
-            style={{
-              background: "var(--surface)",
-              borderColor: "var(--border)",
-            }}
-          >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-              Unscheduled Mission Queue
-            </h3>
+                  {/* Hourly Grid Rows */}
+                  {hours.map((hour) => (
+                    <div key={hour} className="grid grid-cols-8 min-h-16 border-b border-neutral-950/40 py-2 relative">
+                      <div className="text-xs font-mono font-bold text-neutral-500 pt-0.5">
+                        {hour === 12 ? "12:00 PM" : hour > 12 ? `${hour - 12}:00 PM` : `${hour}:00 AM`}
+                      </div>
 
-            <div className="flex flex-col gap-2.5 max-h-[440px] overflow-y-auto pr-1">
-              {tasks
-                .filter((t) => !schedule.some((s) => s.id === t.id) && t.status !== "done")
-                .map((task) => (
-                  <div
-                    key={task.id}
-                    className="p-3 rounded-xl border border-neutral-800 bg-neutral-900/40 flex flex-col gap-1.5"
-                  >
-                    <span className="text-xs font-bold text-neutral-200">{task.title}</span>
-                    <div className="flex items-center justify-between text-[9px] text-neutral-500">
-                      <span>⏱️ {task.estimated_duration || 45} mins</span>
-                      <span className={`font-bold uppercase ${
-                        task.priority === "critical" ? "text-red-400" :
-                        task.priority === "high" ? "text-orange-400" : "text-neutral-400"
-                      }`}>
-                        {task.priority}
-                      </span>
+                      {weekDays.map((day) => {
+                        const dayEvents = events.filter(e => {
+                          const start = new Date(e.start_time);
+                          return isSameDay(start, day) && start.getHours() === hour;
+                        });
+
+                        return (
+                          <div 
+                            key={day.toISOString()} 
+                            className="border-l border-neutral-950/40 min-h-12 relative px-1 flex flex-col gap-1.5"
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, day, hour)}
+                          >
+                            {dayEvents.map((event) => (
+                              <div
+                                key={event.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, event.id)}
+                                className={`rounded-lg p-2 border text-[10px] flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all select-none ${getEventStyle(event)}`}
+                              >
+                                <div>
+                                  <h4 className="font-bold leading-tight truncate text-neutral-200">{event.title}</h4>
+                                  <span className="text-[8px] opacity-60 block mt-0.5">
+                                    {displayTime(event.start_time)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {viewMode === "month" && (
+              <motion.div
+                key="month"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="grid grid-cols-7 gap-1"
+              >
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                  <div key={d} className="text-center py-2 text-[10px] font-bold text-neutral-500 uppercase tracking-wider border-b border-neutral-900">
+                    {d}
                   </div>
                 ))}
-            </div>
-          </div>
+
+                {(() => {
+                  const startMonth = startOfMonth(currentDate);
+                  const endMonth = endOfMonth(currentDate);
+                  const startCal = startOfWeek(startMonth, { weekStartsOn: 1 });
+                  const endCal = endOfWeek(endMonth, { weekStartsOn: 1 });
+                  const days = eachDayOfInterval({ start: startCal, end: endCal });
+
+                  return days.map((day) => {
+                    const dayEvents = events.filter(e => isSameDay(new Date(e.start_time), day));
+                    const isToday = isSameDay(day, new Date());
+                    const isCurrentMonth = day.getMonth() === currentDate.getMonth();
+
+                    return (
+                      <div
+                        key={day.toISOString()}
+                        onClick={() => {
+                          setCurrentDate(day);
+                          setViewMode("day");
+                        }}
+                        className={`min-h-24 p-2 rounded-xl border border-neutral-950/65 bg-neutral-900/20 hover:bg-neutral-900/40 transition-all cursor-pointer flex flex-col justify-between ${
+                          isCurrentMonth ? "opacity-100" : "opacity-30"
+                        }`}
+                      >
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                          isToday ? "bg-violet-600 text-white font-extrabold" : "text-neutral-400"
+                        }`}>
+                          {format(day, "d")}
+                        </span>
+
+                        <div className="space-y-1 mt-2 max-h-16 overflow-hidden">
+                          {dayEvents.slice(0, 3).map((event) => (
+                            <div
+                              key={event.id}
+                              className={`text-[8px] px-1 py-0.5 rounded border truncate ${
+                                event.event_type === "focus_block" ? "bg-violet-500/10 border-violet-500/20 text-violet-300" :
+                                event.event_type === "external" ? "bg-neutral-800 border-neutral-700 text-neutral-200" :
+                                "bg-neutral-950 border-neutral-900 text-neutral-400"
+                              }`}
+                            >
+                              {event.title}
+                            </div>
+                          ))}
+                          {dayEvents.length > 3 && (
+                            <div className="text-[7px] text-neutral-500 font-bold text-right pr-1">
+                              +{dayEvents.length - 3} more
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </motion.div>
+            )}
+
+            {viewMode === "agenda" && (
+              <motion.div
+                key="agenda"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-4 max-h-[500px] overflow-y-auto pr-2"
+              >
+                {(() => {
+                  // Group events by day
+                  const grouped: Record<string, CalendarEvent[]> = {};
+                  events.forEach(e => {
+                    const dateKey = format(new Date(e.start_time), "yyyy-MM-dd");
+                    if (!grouped[dateKey]) grouped[dateKey] = [];
+                    grouped[dateKey].push(e);
+                  });
+
+                  const sortedKeys = Object.keys(grouped).sort();
+
+                  if (sortedKeys.length === 0) {
+                    return (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <List className="w-8 h-8 text-neutral-600 mb-2" />
+                        <p className="text-xs text-neutral-500">No scheduled commitments on your agenda.</p>
+                      </div>
+                    );
+                  }
+
+                  return sortedKeys.map(key => {
+                    const date = parseISO(key);
+                    const dayEvents = grouped[key];
+                    return (
+                      <div key={key} className="space-y-2 border-b border-neutral-900 pb-3 last:border-0">
+                        <h3 className="text-xs font-bold text-violet-400 sticky top-0 bg-neutral-950 py-1 z-10">
+                          {format(date, "EEEE, MMMM d, yyyy")}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {dayEvents.map(e => (
+                            <div 
+                              key={e.id}
+                              className={`p-3.5 rounded-xl border flex flex-col justify-between gap-1.5 ${getEventStyle(e)}`}
+                            >
+                              <div>
+                                <div className="flex items-start justify-between gap-3">
+                                  <span className="font-bold text-xs text-neutral-100">{e.title}</span>
+                                  {e.event_type !== "external" && (
+                                    <span className="text-[7px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest bg-violet-500/10 text-violet-400">
+                                      {e.event_type.replace("_", " ")}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-neutral-400 mt-1 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" /> {displayTime(e.start_time)} - {displayTime(e.end_time)}
+                                </span>
+                                {e.description && (
+                                  <p className="text-[10px] text-neutral-500 mt-1">{e.description}</p>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-3 pt-2 text-[9px] text-neutral-500 border-t border-white/5 mt-1">
+                                {e.location && <span className="flex items-center gap-1"><MapPin className="w-2.5 h-2.5" /> {e.location}</span>}
+                                {e.meeting_link && (
+                                  <a href={e.meeting_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-violet-400 hover:text-violet-300">
+                                    <Video className="w-2.5 h-2.5" /> Meet Link
+                                  </a>
+                                )}
+                                {e.guests && e.guests.length > 0 && <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" /> {e.guests.length} guests</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </motion.div>
+            )}
+
+            {viewMode === "timeline" && (
+              <motion.div
+                key="timeline"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-4"
+              >
+                <div className="flex items-center justify-between border-b border-neutral-900 pb-2">
+                  <span className="text-xs font-bold text-neutral-400">Daily Timeline View</span>
+                  <span className="text-[9px] bg-neutral-900 px-2 py-0.5 rounded text-neutral-500 font-mono">24h Track</span>
+                </div>
+
+                <div className="relative h-20 bg-neutral-900/30 rounded-2xl border border-neutral-900 overflow-hidden">
+                  {/* Hour markers */}
+                  <div className="absolute inset-0 flex justify-between pointer-events-none px-4">
+                    {[8, 10, 12, 14, 16, 18, 20].map((h) => (
+                      <div key={h} className="h-full border-r border-neutral-950 flex flex-col justify-between py-1">
+                        <span className="text-[8px] font-mono text-neutral-600 font-bold">{h > 12 ? `${h-12}PM` : `${h}AM`}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Absolute positioned events */}
+                  {events
+                    .filter(e => isSameDay(new Date(e.start_time), currentDate))
+                    .map((event) => {
+                      const start = new Date(event.start_time);
+                      const end = new Date(event.end_time);
+                      const startHour = start.getHours() + start.getMinutes() / 60;
+                      const endHour = end.getHours() + end.getMinutes() / 60;
+
+                      // Map hours 8-20 to percentage 0-100
+                      const leftPercent = Math.max(0, Math.min(100, ((startHour - 8) / 12) * 100));
+                      const widthPercent = Math.max(5, Math.min(100 - leftPercent, ((endHour - startHour) / 12) * 100));
+
+                      return (
+                        <div
+                          key={event.id}
+                          className={`absolute top-6 bottom-2 rounded-xl p-1 px-2 text-[9px] border font-semibold flex flex-col justify-center truncate ${getEventStyle(event)}`}
+                          style={{
+                            left: `${leftPercent}%`,
+                            width: `${widthPercent}%`,
+                          }}
+                          title={`${event.title} (${displayTime(event.start_time)} - ${displayTime(event.end_time)})`}
+                        >
+                          <span className="truncate">{event.title}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </div>
+      )}
     </div>
   );
 }
