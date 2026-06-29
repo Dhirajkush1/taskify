@@ -80,5 +80,15 @@ export async function POST(request: NextRequest) {
     entity_id: data.id,
   });
 
+  // Trigger AI Focus Time Blocking
+  try {
+    const { CalendarAiService } = await import("@/lib/ai/calendar-ai-service");
+    CalendarAiService.scheduleFocusBlocks(user.id, data.id, supabase).catch(err => {
+      console.error(`[TasksAPI] Focus blocking failed for task ${data.id}:`, err);
+    });
+  } catch (err) {
+    console.error("[TasksAPI] Failed to load CalendarAiService:", err);
+  }
+
   return NextResponse.json({ data }, { status: 201 });
 }

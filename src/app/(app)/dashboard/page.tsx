@@ -5,6 +5,7 @@ import { QuickStats } from "@/components/dashboard/quick-stats";
 import { TodayMissions } from "@/components/dashboard/today-missions";
 import { UpcomingDeadlines } from "@/components/dashboard/upcoming-deadlines";
 import { AutonomousWidgets } from "@/components/dashboard/autonomous-widgets";
+import CalendarIntelligenceCard from "@/components/dashboard/calendar-intelligence";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -85,8 +86,9 @@ export default async function DashboardPage() {
             <TodayMissions tasks={taskList} />
           </div>
 
-          {/* Upcoming Deadlines */}
-          <div>
+          {/* Upcoming Deadlines & Calendar Insights */}
+          <div className="space-y-6">
+            <CalendarIntelligenceCard />
             <UpcomingDeadlines tasks={taskList} />
           </div>
         </div>

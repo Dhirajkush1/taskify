@@ -30,7 +30,8 @@ export class ContextBuilder {
       { data: tasks },
       { data: plan },
       { data: settingsRow },
-      relevantMemories
+      relevantMemories,
+      { data: calendarEvents }
     ] = await Promise.all([
       supabase
         .from("tasks")
@@ -50,12 +51,20 @@ export class ContextBuilder {
         .select("ai_personality, timezone, locale, country, working_hours_start, working_hours_end, week_start, preferred_focus_hours_start, preferred_focus_hours_end")
         .eq("user_id", userId)
         .maybeSingle(),
-      MemoryService.getRelevantMemories(userId, queryText, supabaseClient)
+      MemoryService.getRelevantMemories(userId, queryText, supabaseClient),
+      supabase
+        .from("calendar_events")
+        .select("title, start_time, end_time, event_type, location")
+        .eq("user_id", userId)
+        .gte("end_time", new Date(Date.now() - 12 * 3600 * 1000).toISOString()) // from 12 hours ago
+        .lte("start_time", new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString()) // up to 5 days ahead
+        .order("start_time", { ascending: true })
     ]);
 
     const activeTasks = tasks || [];
     const activePlan = (plan?.plan_data as { today?: string[] } | null) || null;
     const personality = settingsRow?.ai_personality || "friendly_coach";
+    const activeCalendarEvents = calendarEvents || [];
 
     const settings = {
       timezone: settingsRow?.timezone || "UTC",
@@ -115,6 +124,15 @@ export class ContextBuilder {
         activePlan.today.map((b: string) => `- ${b}`).join("\n") + "\n";
     }
 
+    // 5.5. Compile Calendar Events
+    let calendarStr = "";
+    if (activeCalendarEvents.length > 0) {
+      calendarStr = "\nUSER'S CALENDAR COMMITMENTS (Meetings & Work blocks):\n" +
+        activeCalendarEvents.map((e: any) => 
+          `- "${e.title}" | Type: ${e.event_type} | Start: ${e.start_time} | End: ${e.end_time} | Location: ${e.location || "None"}`
+        ).join("\n") + "\n";
+    }
+
     // 6. Compile Personality Instruction Prompt Overlay
     let personalityPrompt = "";
     switch (personality) {
@@ -154,6 +172,7 @@ ${prefStr}
 ${memoriesStr}
 ${tasksStr}
 ${planStr}
+${calendarStr}
 ==============================
 `;
 
