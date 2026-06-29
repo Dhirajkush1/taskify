@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Sparkles,
   LogOut,
+  Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +25,7 @@ import { toast } from "sonner";
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Mission Control", href: "/mission-control", icon: Zap },
+  { label: "Goals", href: "/goals", icon: Target },
   { label: "Tasks", href: "/tasks", icon: CheckSquare },
   { label: "Calendar", href: "/calendar", icon: Calendar },
 ] as const;
