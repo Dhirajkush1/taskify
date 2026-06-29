@@ -584,6 +584,34 @@ async function handleCallbackQuery(callbackQuery: any) {
       }
     }
 
+    else if (actionScope === "reminder") {
+      const { ReminderService } = await import("@/lib/ai/reminder-service");
+      const result = await ReminderService.handleReminderAction(userId, actionName, targetId, supabaseAdmin);
+      
+      if (result.success) {
+        await TelegramBotService.answerCallbackQuery(callbackQuery.id, result.message);
+        
+        let displayState = `🔔 <b>Reminder Action Processed</b>\n\n`;
+        if (actionName === "complete" || actionName === "started") {
+          displayState += `✅ Marked as completed. Excellent work!`;
+        } else if (actionName === "snooze") {
+          displayState += `⏰ Snoozed for 10 minutes.`;
+        } else if (actionName === "busy") {
+          displayState += `🤕 Rescheduled for 30 minutes later.`;
+        } else if (actionName === "later" || actionName === "followup_busy") {
+          displayState += `⏰ Postponed by 1 hour.`;
+        } else if (actionName === "skip") {
+          displayState += `❌ Reminder skipped.`;
+        } else if (actionName === "help") {
+          displayState += `🤝 AI Coaching triggered. Check below for assistance!`;
+        }
+        
+        await TelegramBotService.editMessageText(chatId, messageId, displayState);
+      } else {
+        await TelegramBotService.answerCallbackQuery(callbackQuery.id, result.message, true);
+      }
+    }
+
     else if (actionScope === "rescue") {
       if (actionName === "focus") {
         await TelegramBotService.answerCallbackQuery(callbackQuery.id, "Emergency Focus Block started!");
