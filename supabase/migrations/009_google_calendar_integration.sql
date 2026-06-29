@@ -3,7 +3,7 @@
 -- Migration: 009_google_calendar_integration.sql
 -- ============================================================
 
--- 1. Create Google Accounts Table
+-- 1. Create Google Accounts Table hh
 CREATE TABLE IF NOT EXISTS public.google_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID UNIQUE NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
