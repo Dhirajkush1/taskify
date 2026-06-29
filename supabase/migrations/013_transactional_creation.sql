@@ -57,7 +57,7 @@ BEGIN
   -- A. Fetch Primary Calendar ID for the user
   SELECT calendar_id INTO v_primary_cal_id
     FROM public.google_calendars
-    WHERE user_id = p_user_id AND primary = true
+    WHERE user_id = p_user_id AND "primary" = true
     LIMIT 1;
 
   IF v_primary_cal_id IS NULL THEN
