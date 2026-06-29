@@ -172,7 +172,7 @@ export default function GoalsPage() {
             <p className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Active Roadmaps</p>
             <h2 className="text-2xl font-black mt-1" style={{ color: "var(--text-primary)" }}>{activeCount}</h2>
           </div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-violet-100 text-violet-600">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-violet-500/10 text-violet-400">
             <Target className="w-6 h-6" />
           </div>
         </div>
@@ -182,7 +182,7 @@ export default function GoalsPage() {
             <p className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Completed Goals</p>
             <h2 className="text-2xl font-black mt-1" style={{ color: "var(--text-primary)" }}>{completedCount}</h2>
           </div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-emerald-100 text-emerald-600">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-emerald-500/10 text-emerald-400">
             <Award className="w-6 h-6" />
           </div>
         </div>
@@ -192,16 +192,15 @@ export default function GoalsPage() {
             <p className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Average Consistency</p>
             <h2 className="text-2xl font-black mt-1" style={{ color: "var(--text-primary)" }}>{averageConsistency}%</h2>
           </div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-amber-100 text-amber-600">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-amber-500/10 text-amber-400">
             <TrendingUp className="w-6 h-6" />
           </div>
         </div>
       </div>
 
-      {/* Control bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         {/* Tabs */}
-        <div className="flex gap-1.5 p-1 rounded-xl bg-slate-200/50 border border-slate-200/30">
+        <div className="flex gap-1.5 p-1 rounded-xl bg-white/5 border border-white/10">
           {(["active", "completed", "archived"] as const).map((tab) => (
             <button
               key={tab}
@@ -209,8 +208,8 @@ export default function GoalsPage() {
               className={cn(
                 "px-4 py-1.5 rounded-lg text-xs font-bold transition-all capitalize cursor-pointer",
                 activeTab === tab 
-                  ? "bg-white text-slate-800 shadow-sm" 
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-white/10 text-white shadow-sm" 
+                  : "text-slate-400 hover:text-white"
               )}
             >
               {tab}
@@ -227,7 +226,7 @@ export default function GoalsPage() {
               placeholder="Search goals..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 w-full sm:w-64 rounded-xl border border-slate-200 bg-white/70 text-xs text-slate-800 focus:border-violet-500 transition-colors"
+              className="pl-9 pr-4 py-2 w-full sm:w-64 rounded-xl border border-white/10 bg-white/5 text-xs text-white placeholder-slate-500 focus:border-violet-500 transition-colors"
             />
           </div>
           <button
@@ -247,10 +246,10 @@ export default function GoalsPage() {
           <p className="text-xs text-slate-400 mt-2 font-semibold">Decrypting goal modules...</p>
         </div>
       ) : filteredGoals.length === 0 ? (
-        <div className="glass rounded-2xl p-12 text-center border border-dashed border-slate-200">
-          <Target className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-base font-bold text-slate-800">No goals found</h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+        <div className="glass rounded-2xl p-12 text-center border border-dashed border-white/10">
+          <Target className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+          <h3 className="text-base font-bold text-white">No goals found</h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
             Build your first autonomous goal roadmap by asking Clutch AI to organize your next destination.
           </p>
           <button
@@ -263,14 +262,14 @@ export default function GoalsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredGoals.map((goal) => {
-            const healthColor = goal.health_score >= 80 ? "text-emerald-500 bg-emerald-50" : goal.health_score >= 50 ? "text-amber-500 bg-amber-50" : "text-rose-500 bg-rose-50";
+            const healthColor = goal.health_score >= 80 ? "text-emerald-400 bg-emerald-500/10" : goal.health_score >= 50 ? "text-amber-400 bg-amber-500/10" : "text-rose-400 bg-rose-500/10";
             return (
               <Link key={goal.id} href={`/goals/${goal.id}`}>
-                <div className="glass p-5 rounded-2xl hover:shadow-md transition-all border border-slate-200 bg-white hover:border-violet-500/50 cursor-pointer flex flex-col justify-between h-56">
+                <div className="glass p-5 rounded-2xl hover:shadow-md transition-all hover:border-violet-500/50 cursor-pointer flex flex-col justify-between h-56">
                   <div>
                     {/* Header */}
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                      <span className="text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full bg-white/5 text-slate-400">
                         {goal.category}
                       </span>
                       <div className="flex items-center gap-1.5">
@@ -280,12 +279,12 @@ export default function GoalsPage() {
                       </div>
                     </div>
 
-                    <h3 className="text-sm font-black text-slate-800 mt-3 line-clamp-1">{goal.title}</h3>
+                    <h3 className="text-sm font-black text-white mt-3 line-clamp-1">{goal.title}</h3>
                     <p className="text-xs text-slate-400 font-semibold mt-1 line-clamp-2">{goal.description}</p>
                   </div>
 
                   {/* Progress info */}
-                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <div className="pt-4 border-t border-white/5 flex items-center justify-between">
                     <div>
                       <p className="text-[10px] text-slate-400 font-bold uppercase">Success Probability</p>
                       <h4 className="text-base font-black text-violet-600 mt-0.5">
@@ -295,7 +294,7 @@ export default function GoalsPage() {
 
                     <div className="text-right">
                       <p className="text-[10px] text-slate-400 font-bold uppercase">Consistency</p>
-                      <h4 className="text-base font-black text-slate-800 mt-0.5">
+                      <h4 className="text-base font-black text-white mt-0.5">
                         {goal.consistency}%
                       </h4>
                     </div>
@@ -313,111 +312,111 @@ export default function GoalsPage() {
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 bg-slate-950/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl border border-slate-200"
-            >
-              {/* Modal Header */}
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-violet-500 animate-pulse" />
-                  <h3 className="text-sm font-black text-slate-800">Goal Coaching AI Facilitator</h3>
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="glass-strong rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl"
+              >
+                {/* Modal Header */}
+                <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-violet-500 animate-pulse" />
+                    <h3 className="text-sm font-black text-white">Goal Coaching AI Facilitator</h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setGeneratedBlueprint(null);
+                    }}
+                    className="text-xs font-bold text-slate-400 hover:text-slate-200 cursor-pointer"
+                  >
+                    Close
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setGeneratedBlueprint(null);
-                  }}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-800 cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
 
-              {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[300px]">
-                {chatHistory.map((msg, index) => {
-                  const isUser = msg.role === "user";
-                  return (
-                    <div 
-                      key={index}
-                      className={cn("flex", isUser ? "justify-end" : "justify-start")}
-                    >
+                {/* Modal Body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[300px]">
+                  {chatHistory.map((msg, index) => {
+                    const isUser = msg.role === "user";
+                    return (
                       <div 
-                        className={cn(
-                          "max-w-md px-4 py-3 rounded-2xl text-xs font-semibold leading-relaxed",
-                          isUser 
-                            ? "bg-violet-600 text-white rounded-tr-none shadow-sm" 
-                            : "bg-slate-100 text-slate-700 rounded-tl-none"
-                        )}
+                        key={index}
+                        className={cn("flex", isUser ? "justify-end" : "justify-start")}
                       >
-                        {msg.content}
+                        <div 
+                          className={cn(
+                            "max-w-md px-4 py-3 rounded-2xl text-xs font-semibold leading-relaxed",
+                            isUser 
+                              ? "bg-violet-600 text-white rounded-tr-none shadow-sm" 
+                              : "bg-white/5 text-slate-200 rounded-tl-none"
+                          )}
+                        >
+                          {msg.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Submitting indicator */}
+                  {submittingChat && (
+                    <div className="flex justify-start">
+                      <div className="bg-white/5 px-4 py-3 rounded-2xl rounded-tl-none flex items-center gap-2">
+                        <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin" />
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Reasoning...</span>
                       </div>
                     </div>
-                  );
-                })}
-
-                {/* Submitting indicator */}
-                {submittingChat && (
-                  <div className="flex justify-start">
-                    <div className="bg-slate-100 px-4 py-3 rounded-2xl rounded-tl-none flex items-center gap-2">
-                      <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin" />
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Reasoning...</span>
-                    </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Show Blueprint summary if generated */}
                 {generatedBlueprint && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="border border-violet-100 bg-violet-50/20 p-5 rounded-2xl space-y-4"
+                    className="border border-violet-950 bg-violet-950/20 p-5 rounded-2xl space-y-4"
                   >
-                    <div className="flex items-center justify-between border-b border-violet-100 pb-2">
-                      <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">AI Goal Blueprint Proposal</h4>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-600">
+                    <div className="flex items-center justify-between border-b border-violet-900/50 pb-2">
+                      <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">AI Goal Blueprint Proposal</h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400">
                         Confidence: {generatedBlueprint.confidence_score}%
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 text-xs">
                       <div>
-                        <span className="text-slate-400 font-bold uppercase text-[9px]">Roadmap Name</span>
-                        <p className="font-bold text-slate-800 mt-0.5">{generatedBlueprint.title}</p>
+                        <span className="text-slate-500 font-bold uppercase text-[9px]">Roadmap Name</span>
+                        <p className="font-bold text-white mt-0.5">{generatedBlueprint.title}</p>
                       </div>
                       <div>
-                        <span className="text-slate-400 font-bold uppercase text-[9px]">Category / Term</span>
-                        <p className="font-bold text-slate-800 mt-0.5 capitalize">{generatedBlueprint.category} ({generatedBlueprint.term?.replace("_", " ")})</p>
+                        <span className="text-slate-500 font-bold uppercase text-[9px]">Category / Term</span>
+                        <p className="font-bold text-white mt-0.5 capitalize">{generatedBlueprint.category} ({generatedBlueprint.term?.replace("_", " ")})</p>
                       </div>
                       <div>
-                        <span className="text-slate-400 font-bold uppercase text-[9px]">Total Duration</span>
-                        <p className="font-bold text-slate-800 mt-0.5">{generatedBlueprint.duration_days} Days</p>
+                        <span className="text-slate-500 font-bold uppercase text-[9px]">Total Duration</span>
+                        <p className="font-bold text-white mt-0.5">{generatedBlueprint.duration_days} Days</p>
                       </div>
                       <div>
-                        <span className="text-slate-400 font-bold uppercase text-[9px]">Weekly Commitment</span>
-                        <p className="font-bold text-slate-800 mt-0.5">{generatedBlueprint.weekly_commitment_hours} Hours</p>
+                        <span className="text-slate-500 font-bold uppercase text-[9px]">Weekly Commitment</span>
+                        <p className="font-bold text-white mt-0.5">{generatedBlueprint.weekly_commitment_hours} Hours</p>
                       </div>
                       <div>
-                        <span className="text-slate-400 font-bold uppercase text-[9px]">Success Chance</span>
-                        <p className="font-bold text-emerald-600 mt-0.5">{generatedBlueprint.success_probability}%</p>
+                        <span className="text-slate-500 font-bold uppercase text-[9px]">Success Chance</span>
+                        <p className="font-bold text-emerald-400 mt-0.5">{generatedBlueprint.success_probability}%</p>
                       </div>
                       <div>
-                        <span className="text-slate-400 font-bold uppercase text-[9px]">Plan Difficulty</span>
-                        <p className="font-bold text-amber-600 mt-0.5 capitalize">{generatedBlueprint.difficulty}</p>
+                        <span className="text-slate-500 font-bold uppercase text-[9px]">Plan Difficulty</span>
+                        <p className="font-bold text-amber-400 mt-0.5 capitalize">{generatedBlueprint.difficulty}</p>
                       </div>
                     </div>
 
                     {/* Milestones Preview */}
-                    <div className="border-t border-violet-100 pt-3">
-                      <span className="text-slate-400 font-bold uppercase text-[9px]">Key Milestones</span>
+                    <div className="border-t border-white/5 pt-3">
+                      <span className="text-slate-500 font-bold uppercase text-[9px]">Key Milestones</span>
                       <div className="space-y-1.5 mt-1.5">
                         {generatedBlueprint.milestones?.map((m: any, idx: number) => (
-                          <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white border border-slate-100">
-                            <span className="font-bold text-slate-700">{m.title}</span>
-                            <span className="text-[10px] text-slate-400 font-semibold">Day {m.target_day_offset}</span>
+                          <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white/5 border border-white/5">
+                            <span className="font-bold text-slate-200">{m.title}</span>
+                            <span className="text-[10px] text-slate-500 font-semibold">Day {m.target_day_offset}</span>
                           </div>
                         ))}
                       </div>
@@ -449,7 +448,7 @@ export default function GoalsPage() {
               {!generatedBlueprint && (
                 <form 
                   onSubmit={handleSendChat}
-                  className="p-4 border-t border-slate-100 flex items-center gap-3 bg-slate-50 rounded-b-3xl"
+                  className="p-4 border-t border-white/5 flex items-center gap-3 bg-white/5 rounded-b-3xl"
                 >
                   <input
                     type="text"
@@ -457,7 +456,7 @@ export default function GoalsPage() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     disabled={submittingChat}
-                    className="flex-1 px-4 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:border-violet-500"
+                    className="flex-1 px-4 py-2 text-xs rounded-xl border border-white/10 bg-white/5 text-white focus:border-violet-500"
                   />
                   <button
                     type="submit"
