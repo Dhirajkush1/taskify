@@ -262,9 +262,26 @@ Evaluate the dialogue and respond.
           risk_level: "low",
           completion_probability: 95,
         }));
-        const { error: tasksError } = await supabase.from("tasks").insert(tasksPayload);
-        if (tasksError) {
-          console.error("[GoalPlannerEngine] Error inserting milestone tasks:", tasksError.message);
+
+        for (const payload of tasksPayload) {
+          const { data: existing } = await supabase
+            .from("tasks")
+            .select("id")
+            .eq("user_id", userId)
+            .ilike("title", payload.title.trim())
+            .eq("status", "todo")
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            await supabase
+              .from("tasks")
+              .update(payload as any)
+              .eq("id", existing[0].id);
+          } else {
+            await supabase
+              .from("tasks")
+              .insert(payload as any);
+          }
         }
       }
     }
