@@ -1,21 +1,25 @@
-# Dependencies
-node_modules
-.pnpm-store
-
-# Next.js Build Output & Cache
+# ── Build outputs ─────────────────────────────────────────────
 .next
 out
 build
 
-# Local Environment Variables & Secrets
+# ── Dependencies (re-installed inside container) ──────────────
+node_modules
+.pnpm-store
+
+# ── Environment & Secrets (injected at runtime, never baked in) ──
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env*.local
+.env.*.local
+.env.development
+.env.test
+.env.production
 
-# IDE & Editor files
+# ── TypeScript build cache ────────────────────────────────────
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# ── IDE & Editor ─────────────────────────────────────────────
 .vscode/
 .idea/
 *.suo
@@ -24,22 +28,32 @@ build
 *.sln
 *.sw?
 
-# OS Files
+# ── OS artifacts ─────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Debug logs
+# ── Debug logs ───────────────────────────────────────────────
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Git
+# ── Git ───────────────────────────────────────────────────────
 .git
 .gitignore
 .gitattributes
 
-# Repository files not needed in container
+# ── Docs & repo files not needed in container ─────────────────
 README.md
+*.md
 map.md
+
+# ── Supabase (migrations run separately, not in container) ────
 supabase/
+
+# ── Test files ────────────────────────────────────────────────
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+__tests__/
