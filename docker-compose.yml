@@ -1,7 +1,6 @@
 # ============================================================
 # Taskify / Clutch AI — Docker Compose
-# For local production testing of the Docker image.
-# Real deployments use the Dockerfile directly (Cloud Run, Railway, etc.)
+# M1/M2 Mac compatible — forces linux/amd64 to match Cloud Run
 # ============================================================
 
 version: "3.9"
@@ -11,6 +10,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # M1/M2 Mac: force amd64 so local test matches Cloud Run's x86 servers
+      platforms:
+        - linux/amd64
       args:
         # NEXT_PUBLIC_* vars are baked into the JS bundle at build time.
         # These MUST be set here (or as environment variables before running).
@@ -18,13 +20,15 @@ services:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
 
+    # M1/M2 Mac: explicitly run the container as amd64
+    platform: linux/amd64
+
     container_name: clutch-ai
 
     ports:
       - "3000:3000"
 
     # Runtime secrets — passed as env vars, never baked into the image.
-    # These are read server-side only (process.env.*) and are safe to inject at runtime.
     environment:
       NODE_ENV: production
 
