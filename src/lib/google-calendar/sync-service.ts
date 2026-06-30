@@ -49,8 +49,20 @@ export class CalendarSyncService {
       holiday_detection: false,
       task_creation: "manual_suggest",
       reminder_creation: true,
-      auto_ai_planning: false
+      auto_ai_planning: false,
+      sync_google_to_taskify: true,
+      sync_taskify_to_google: true,
+      auto_create_google_events: true,
+      future_events_only: true,
+      ignore_historical: true,
+      background_sync: true
     };
+
+    // If sync from Google to Taskify is disabled, exit early
+    if (settings.sync_google_to_taskify === false) {
+      console.log(`[SyncService] sync_google_to_taskify is disabled for user ${userId}. Skipping sync.`);
+      return { success: true, importedCount: 0, deletedCount: 0 };
+    }
 
     // Calculate time window for full/initial sync
     const now = new Date();
@@ -58,7 +70,12 @@ export class CalendarSyncService {
     let timeMax: string | undefined = undefined;
 
     if (!calRecord.sync_token) {
-      if (settings.import_historical) {
+      const futureEventsOnly = settings.future_events_only !== false; // Default true
+      const ignoreHistorical = settings.ignore_historical !== false; // Default true
+
+      if (futureEventsOnly || ignoreHistorical) {
+        timeMin = now.toISOString();
+      } else if (settings.import_historical) {
         const histDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         timeMin = histDate.toISOString();
       } else {
@@ -66,10 +83,9 @@ export class CalendarSyncService {
         timeMin = startOfToday.toISOString();
       }
 
-      if (settings.import_window && settings.import_window > 0) {
-        const futureDate = new Date(now.getTime() + settings.import_window * 24 * 60 * 60 * 1000);
-        timeMax = futureDate.toISOString();
-      }
+      // timeMax is now + 365 days
+      const futureDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+      timeMax = futureDate.toISOString();
     }
 
     // 2. Fetch events from Google
@@ -117,20 +133,39 @@ export class CalendarSyncService {
       
       // If the event is cancelled/deleted
       if (item.status === "cancelled") {
-        const { data: localEv } = await supabase
-          .from("calendar_events")
-          .select("id, task_id")
-          .eq("user_id", userId)
+        // Fetch from calendar_event_links mapping
+        const { data: linkRecord } = await supabase
+          .from("calendar_event_links")
+          .select("*")
           .eq("google_event_id", googleEventId)
+          .eq("user_id", userId)
           .maybeSingle();
 
-        if (localEv?.task_id) {
+        let taskId = linkRecord?.task_id;
+        if (!taskId) {
+          const { data: localEv } = await supabase
+            .from("calendar_events")
+            .select("id, task_id")
+            .eq("user_id", userId)
+            .eq("google_event_id", googleEventId)
+            .maybeSingle();
+          taskId = localEv?.task_id;
+        }
+
+        if (taskId) {
           await supabase
             .from("tasks")
             .update({ status: "archived" })
-            .eq("id", localEv.task_id);
-          console.log(`[SyncService] Archived linked task ${localEv.task_id} for deleted event ${googleEventId}`);
+            .eq("id", taskId);
+          console.log(`[SyncService] Archived linked task ${taskId} for deleted event ${googleEventId}`);
         }
+
+        // Delete from mapping
+        await supabase
+          .from("calendar_event_links")
+          .delete()
+          .eq("google_event_id", googleEventId)
+          .eq("user_id", userId);
 
         const { error: deleteError } = await supabase
           .from("calendar_events")
@@ -152,7 +187,10 @@ export class CalendarSyncService {
 
       // Ignore old events: do not sync if event has already ended
       const endTimestamp = new Date(endIso).getTime();
-      if (endTimestamp < now.getTime()) {
+      const futureEventsOnly = settings.future_events_only !== false; // Default true
+      const ignoreHistorical = settings.ignore_historical !== false; // Default true
+
+      if (endTimestamp < now.getTime() && (futureEventsOnly || ignoreHistorical)) {
         console.log(`[SyncService] Skipping historical event: "${item.summary || "Untitled Event"}"`);
         continue;
       }
@@ -193,10 +231,55 @@ export class CalendarSyncService {
         updated_at: new Date().toISOString(),
       };
 
-      // Check if event already exists
+      // Check mapping first
+      const { data: existingLink } = await supabase
+        .from("calendar_event_links")
+        .select("*")
+        .eq("google_event_id", googleEventId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      // Check conflict (edited within 2 minutes)
+      let skipSyncGoogleToTaskify = false;
+      if (existingLink?.task_id) {
+        const { data: linkedTask } = await supabase
+          .from("tasks")
+          .select("*")
+          .eq("id", existingLink.task_id)
+          .maybeSingle();
+
+        if (linkedTask) {
+          const googleUpdated = item.updated ? new Date(item.updated).getTime() : 0;
+          const taskUpdated = linkedTask.updated_at ? new Date(linkedTask.updated_at).getTime() : 0;
+          const lastSynced = existingLink.last_synced_at ? new Date(existingLink.last_synced_at).getTime() : 0;
+
+          const isGoogleEditedRecently = (googleUpdated - lastSynced) > 0 && (Date.now() - googleUpdated) < 120 * 1000;
+          const isTaskEditedRecently = (taskUpdated - lastSynced) > 0 && (Date.now() - taskUpdated) < 120 * 1000;
+
+          if (isGoogleEditedRecently && isTaskEditedRecently) {
+            console.log(`[SyncService] Conflict detected for task ${linkedTask.id} and google event ${googleEventId}`);
+            if (taskUpdated > googleUpdated) {
+              console.log(`[SyncService] Taskify updates are newer. Overwriting Google Calendar.`);
+              // Taskify wins. Skip sync to Taskify and push task update to Google Calendar.
+              skipSyncGoogleToTaskify = true;
+              CalendarSyncService.pushTaskToGoogle(userId, linkedTask.id, supabase).catch(err => {
+                console.error("[SyncService] Failed to push task update to Google in conflict:", err);
+              });
+            } else {
+              console.log(`[SyncService] Google Calendar updates are newer. Overwriting Taskify.`);
+            }
+          }
+        }
+      }
+
+      if (skipSyncGoogleToTaskify) {
+        continue;
+      }
+
+      // Check if event already exists in calendar_events
       const { data: existingEvent } = await supabase
         .from("calendar_events")
-        .select("id, ai_analysis")
+        .select("id, ai_analysis, task_id")
         .eq("user_id", userId)
         .eq("google_event_id", googleEventId)
         .maybeSingle();
@@ -238,6 +321,20 @@ export class CalendarSyncService {
         // Track as new external event for AI understanding analysis
         newExternalEvents.push(insertedEvent);
       }
+
+      // Upsert into calendar_event_links
+      await supabase
+        .from("calendar_event_links")
+        .upsert({
+          user_id: userId,
+          task_id: existingLink?.task_id || existingEvent?.task_id || null,
+          google_event_id: googleEventId,
+          calendar_id: calendarId,
+          sync_direction: "google_to_taskify",
+          last_synced_at: new Date().toISOString(),
+          etag: item.etag || null,
+          status: "active"
+        }, { onConflict: "task_id, google_event_id" });
     }
 
     // 4. Save the next sync token
@@ -410,6 +507,175 @@ export class CalendarSyncService {
       return true;
     } catch (err) {
       console.error(`[SyncService] Webhook watch registration failed for calendar ${calendarId}:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Pushes a Taskify task (creation or update) to Google Calendar if it has dates/deadlines.
+   */
+  static async pushTaskToGoogle(
+    userId: string,
+    taskId: string,
+    customSupabase?: SupabaseClient<Database>
+  ): Promise<boolean> {
+    const supabase = (customSupabase || createServiceClient()) as any;
+
+    try {
+      // 1. Fetch user's sync configurations
+      const { data: account } = await supabase
+        .from("google_accounts")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!account || !account.sync_enabled) {
+        return false;
+      }
+
+      const settings = account.sync_settings || {};
+      const syncTaskifyToGoogle = settings.sync_taskify_to_google !== false; // Default true
+      
+      if (!syncTaskifyToGoogle) {
+        return false;
+      }
+
+      // 2. Fetch the target task
+      const { data: task, error: taskError } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("id", taskId)
+        .single();
+
+      if (taskError || !task) {
+        console.error(`[SyncService] Task ${taskId} not found:`, taskError?.message);
+        return false;
+      }
+
+      // We only sync tasks that have deadlines
+      if (!task.deadline) {
+        console.log(`[SyncService] Task ${taskId} has no deadline. Skipping Google Calendar push.`);
+        return false;
+      }
+
+      // 3. Find primary calendar ID
+      const { data: primaryCal } = await supabase
+        .from("google_calendars")
+        .select("calendar_id")
+        .eq("user_id", userId)
+        .eq("primary", true)
+        .maybeSingle();
+
+      const calendarId = primaryCal?.calendar_id || "primary";
+
+      // 4. Check mapping to see if Google Event already exists
+      const { data: existingLink } = await supabase
+        .from("calendar_event_links")
+        .select("*")
+        .eq("task_id", taskId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      // Compute event duration
+      const durationMins = task.estimated_duration || 60;
+      const startStr = task.deadline;
+      const endStr = new Date(new Date(startStr).getTime() + durationMins * 60 * 1000).toISOString();
+
+      const googleEventData: GoogleEventInput = {
+        summary: task.title,
+        description: task.description || `Clutch AI Task. Status: ${task.status}. Priority: ${task.priority}`,
+        start: {
+          dateTime: startStr,
+          timeZone: "UTC",
+        },
+        end: {
+          dateTime: endStr,
+          timeZone: "UTC",
+        },
+      };
+
+      if (existingLink?.google_event_id) {
+        await GoogleCalendarClient.updateEvent(
+          userId,
+          calendarId,
+          existingLink.google_event_id,
+          googleEventData
+        );
+
+        await supabase
+          .from("calendar_event_links")
+          .update({
+            last_synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", existingLink.id);
+
+        console.log(`[SyncService] Updated Google Calendar event ${existingLink.google_event_id} for task ${taskId}`);
+      } else {
+        const gEvent = await GoogleCalendarClient.createEvent(userId, calendarId, googleEventData);
+
+        // Save mapping
+        await supabase
+          .from("calendar_event_links")
+          .insert({
+            user_id: userId,
+            task_id: taskId,
+            google_event_id: gEvent.id,
+            calendar_id: calendarId,
+            sync_direction: "taskify_to_google",
+            last_synced_at: new Date().toISOString(),
+            etag: gEvent.etag || null,
+            status: "active"
+          });
+
+        console.log(`[SyncService] Created Google Calendar event ${gEvent.id} for task ${taskId}`);
+      }
+
+      return true;
+    } catch (err) {
+      console.error(`[SyncService] Failed to push task ${taskId} to Google Calendar:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Deletes a Google Calendar event linked to a deleted Taskify task.
+   */
+  static async deleteTaskFromGoogle(
+    userId: string,
+    taskId: string,
+    customSupabase?: SupabaseClient<Database>
+  ): Promise<boolean> {
+    const supabase = (customSupabase || createServiceClient()) as any;
+
+    try {
+      const { data: existingLink } = await supabase
+        .from("calendar_event_links")
+        .select("*")
+        .eq("task_id", taskId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!existingLink?.google_event_id) {
+        return false;
+      }
+
+      await GoogleCalendarClient.deleteEvent(
+        userId,
+        existingLink.calendar_id || "primary",
+        existingLink.google_event_id
+      );
+
+      // Remove mapping
+      await supabase
+        .from("calendar_event_links")
+        .delete()
+        .eq("id", existingLink.id);
+
+      console.log(`[SyncService] Deleted Google Calendar event ${existingLink.google_event_id} for task ${taskId}`);
+      return true;
+    } catch (err) {
+      console.error(`[SyncService] Failed to delete Google Calendar event for task ${taskId}:`, err);
       return false;
     }
   }

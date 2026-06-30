@@ -16,6 +16,8 @@ import {
   Sparkles,
   LogOut,
   Target,
+  FolderKanban,
+  Inbox
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -24,10 +26,12 @@ import { toast } from "sonner";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Mission Control", href: "/mission-control", icon: Zap },
+  { label: "Daily Planner", href: "/tasks", icon: CheckSquare },
   { label: "Goals", href: "/goals", icon: Target },
-  { label: "Tasks", href: "/tasks", icon: CheckSquare },
+  { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Calendar", href: "/calendar", icon: Calendar },
+  { label: "Inbox", href: "/inbox", icon: Inbox },
+  { label: "Mission Control", href: "/mission-control", icon: Zap },
 ] as const;
 
 const BOTTOM_ITEMS = [

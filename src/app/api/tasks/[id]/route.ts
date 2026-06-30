@@ -56,6 +56,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Push update to Google Calendar
+  try {
+    const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+    CalendarSyncService.pushTaskToGoogle(user.id, id, supabase).catch(err => {
+      console.log(`[TasksDetailAPI] Google Calendar sync failed on update for task ${id}:`, err);
+    });
+  } catch (err) {
+    console.error("[TasksDetailAPI] Failed to load CalendarSyncService for google update:", err);
+  }
+
   // Log activity
   if (body.status === "done") {
     await supabase.from("activity_logs").insert({
@@ -78,6 +88,16 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Delete from Google Calendar if linked
+  try {
+    const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+    CalendarSyncService.deleteTaskFromGoogle(user.id, id, supabase).catch(err => {
+      console.log(`[TasksDetailAPI] Google Calendar deletion failed for task ${id}:`, err);
+    });
+  } catch (err) {
+    console.error("[TasksDetailAPI] Failed to load CalendarSyncService for google delete:", err);
   }
 
   const { error } = await supabase

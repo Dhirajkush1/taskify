@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
   const state = searchParams.get("state"); // Contains the user's ID
   const error = searchParams.get("error");
 
-  const settingsUrl = new URL("/settings", request.url);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const settingsUrl = new URL("/settings", appUrl);
 
   if (error) {
     console.error("[OAuthCallback] Google returned an error:", error);
@@ -42,7 +43,6 @@ export async function GET(request: NextRequest) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const redirectUri = process.env.GOOGLE_REDIRECT_URI;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
     // Structured logging for debugging
     console.log("[OAuthCallback] Token exchange parameters audit:", {
@@ -64,9 +64,6 @@ export async function GET(request: NextRequest) {
     }
     if (!redirectUri) {
       throw new Error("Missing required environment variable: GOOGLE_REDIRECT_URI");
-    }
-    if (!appUrl) {
-      throw new Error("Missing required environment variable: NEXT_PUBLIC_APP_URL");
     }
 
     console.log("[OAuthCallback] Exchanging authorization code for tokens...");
@@ -95,7 +92,6 @@ export async function GET(request: NextRequest) {
     const expiresIn = tokenData.expires_in || 3600;
 
     if (!refreshToken) {
-      // If refresh token is missing, we log it. Since prompt=consent is used, we should always get it on first setup.
       console.warn("[OAuthCallback] WARNING: No refresh token returned. User may have already approved previously.");
     }
 
@@ -115,8 +111,6 @@ export async function GET(request: NextRequest) {
     console.log("[OAuthCallback] Storing encrypted tokens in Supabase...");
     const encryptedAccessToken = encryptToken(accessToken);
     
-    // Fallback: if refreshToken is missing (because of previous auth and no prompt consent cache clear),
-    // check if we already have it stored so we don't overwrite it with empty.
     let encryptedRefreshToken = refreshToken ? encryptToken(refreshToken) : "";
     if (!refreshToken) {
       const { data: existingAcct } = await supabase
@@ -128,7 +122,6 @@ export async function GET(request: NextRequest) {
       if (existingAcct?.refresh_token) {
         encryptedRefreshToken = existingAcct.refresh_token;
       } else {
-        // Fatal: We need a refresh token!
         settingsUrl.searchParams.set("google_connect", "error");
         settingsUrl.searchParams.set("msg", "missing_refresh_token_retry");
         return NextResponse.redirect(settingsUrl.toString());
@@ -188,7 +181,7 @@ export async function GET(request: NextRequest) {
           summary: cal.summary || "Unnamed Calendar",
           description: cal.description || null,
           primary: isPrimary,
-          selected: isPrimary, // Select primary calendar by default, secondary unselected initially
+          selected: isPrimary,
           updated_at: new Date().toISOString(),
         }, { onConflict: "user_id, calendar_id" });
     }

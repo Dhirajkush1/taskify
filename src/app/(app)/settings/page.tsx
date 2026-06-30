@@ -31,7 +31,13 @@ export default function SettingsPage() {
     holiday_detection: false,
     task_creation: "manual_suggest",
     reminder_creation: true,
-    auto_ai_planning: false
+    auto_ai_planning: false,
+    sync_google_to_taskify: true,
+    sync_taskify_to_google: true,
+    auto_create_google_events: true,
+    future_events_only: true,
+    ignore_historical: true,
+    background_sync: true
   });
 
   const updateSyncSetting = async (key: string, value: any) => {
@@ -812,6 +818,113 @@ export default function SettingsPage() {
                   <div
                     className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
                     style={{ left: syncSettings.reminder_creation ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Bidirectional Sync Settings */}
+            <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-violet-400">Bidirectional Sync Configuration</h3>
+              
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Sync Google → Taskify</span>
+                  <p className="text-[10px] text-neutral-500">Automatically sync events from Google Calendar to Taskify</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("sync_google_to_taskify", syncSettings.sync_google_to_taskify === false ? true : false)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.sync_google_to_taskify !== false ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.sync_google_to_taskify !== false ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Sync Taskify → Google</span>
+                  <p className="text-[10px] text-neutral-500">Automatically push created tasks with deadlines to Google Calendar</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("sync_taskify_to_google", syncSettings.sync_taskify_to_google === false ? true : false)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.sync_taskify_to_google !== false ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.sync_taskify_to_google !== false ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Auto Create Google Events</span>
+                  <p className="text-[10px] text-neutral-500">Create a matching Google event for any dated Taskify task</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("auto_create_google_events", syncSettings.auto_create_google_events === false ? true : false)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.auto_create_google_events !== false ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.auto_create_google_events !== false ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Future Events Only</span>
+                  <p className="text-[10px] text-neutral-500">Only import calendar events starting from the current time</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("future_events_only", syncSettings.future_events_only === false ? true : false)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.future_events_only !== false ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.future_events_only !== false ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Ignore Historical Events</span>
+                  <p className="text-[10px] text-neutral-500">Do not import past/ended calendar commitments</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("ignore_historical", syncSettings.ignore_historical === false ? true : false)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.ignore_historical !== false ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.ignore_historical !== false ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Background Sync</span>
+                  <p className="text-[10px] text-neutral-500">Run background delta updates every 5 minutes</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("background_sync", syncSettings.background_sync === false ? true : false)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.background_sync !== false ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.background_sync !== false ? "calc(100% - 18px)" : "2px" }}
                   />
                 </button>
               </div>
