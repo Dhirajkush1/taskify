@@ -43,7 +43,7 @@ const colorsMap: Record<string, string> = {
 };
 
 const orbitItems = [
-  { id: "mission", label: "Mission Control" },
+  { id: "mission", label: "Taskify Buddy" },
   { id: "calendar", label: "Calendar" },
   { id: "telegram", label: "Telegram Bot" },
   { id: "voice", label: "Voice Sync" },

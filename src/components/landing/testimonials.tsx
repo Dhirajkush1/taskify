@@ -30,7 +30,7 @@ const TESTIMONIALS = [
   },
   {
     quote:
-      "Incredibly intuitive. I was managing 12 client projects simultaneously and Taskify kept me sane. The mission control chat is like having a co-pilot.",
+      "Incredibly intuitive. I was managing 12 client projects simultaneously and Taskify kept me sane. The Taskify Buddy chat is like having a co-pilot.",
     name: "Jake Thompson",
     role: "Startup Founder",
     initials: "JT",

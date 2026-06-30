@@ -51,7 +51,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Protected routes — redirect to login if not authenticated
-  const protectedPaths = ["/dashboard", "/mission-control", "/tasks", "/calendar", "/settings", "/profile"];
+  const protectedPaths = ["/dashboard", "/taskify-buddy", "/tasks", "/calendar", "/settings", "/profile", "/reminders"];
   const isProtectedRoute = protectedPaths.some((path) =>
     pathname.startsWith(path)
   );

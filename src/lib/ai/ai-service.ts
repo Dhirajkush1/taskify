@@ -101,9 +101,10 @@ JSON SCHEMA:
   "extracted_reminders": [
     {
       "title": "Reminder or reminder action title",
-      "reminder_time": "Time string (e.g. 'in 15 minutes', '2026-06-27T10:00:00Z', 'tomorrow at 9 AM')",
+      "reminder_time": "Time string (e.g. 'in 15 minutes', '2026-06-27T10:00:00Z', 'tomorrow at 9 AM') or null if no time is explicitly provided",
       "reminder_type": "specific_time" | "relative_time" | "recurring" | "deadline" | "smart",
-      "recurrence_pattern": "daily" | "weekly" | null
+      "recurrence_pattern": "daily" | "weekly" | "every 2 hours" | null,
+      "priority": "low" | "medium" | "high" | "critical" | null
     }
   ],
   "extracted_goals": [
@@ -134,6 +135,7 @@ CRITICAL RULES:
 3. If no new tasks, reminders, or goals are mentioned, keep their arrays empty but still generate the 'chat_response', 'execution_plan', and 'coaching_advice' based on user's message.
 4. You must compute realistic priority_scores (closer deadlines, higher importance = higher score) and risk_levels (near deadlines or heavy dependencies = high/critical risk).
 5. If the user says 'remind me to X in Y minutes' or 'set a reminder for X', extract it into the 'extracted_reminders' array.
+6. If the user asks for a reminder but does not specify a time (e.g. 'remind me to study'), extract the reminder with "reminder_time": null. Do NOT omit it from 'extracted_reminders'.
 `;
 
 import { AIClient, AIMessage, AIConfig } from "./providers";

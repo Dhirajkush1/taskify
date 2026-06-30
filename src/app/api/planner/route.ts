@@ -156,13 +156,13 @@ export async function GET(request: NextRequest) {
       date: dateStr,
       priorities,
       scheduled: calendarEvents,
-      goalTasks: goalTasks.filter((gt) => gt.status !== "done"),
-      projectTasks: projectTasks.filter((pt) => pt.status !== "done"),
+      goalTasks: goalTasks.filter((gt: any) => gt.status !== "done"),
+      projectTasks: projectTasks.filter((pt: any) => pt.status !== "done"),
       inbox: inboxItems,
       habits: filteredHabits,
       quickWins,
       ifTimePermits,
-      reminders: reminders.filter((r) => r.status !== "completed"),
+      reminders: reminders.filter((r: any) => r.status !== "completed"),
       allTasks: allActions // helper list containing details
     };
 

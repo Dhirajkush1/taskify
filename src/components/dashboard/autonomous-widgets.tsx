@@ -456,7 +456,7 @@ export function AutonomousWidgets({
           <h3 className="text-sm font-extrabold text-neutral-100 leading-relaxed">
             {pendingTasks.length > 0
               ? `You have ${pendingTasks.length} missions active. Your workload is ${workloadStatus.toLowerCase()} with a ${completionProbability.average}% average completion probability.`
-              : "All clear! You have no active missions. Draft a new milestone in Mission Control to unlock your productivity roadmap!"}
+              : "All clear! You have no active missions. Draft a new milestone in Taskify Buddy to unlock your productivity roadmap!"}
           </h3>
           <p className="text-xs text-neutral-400 leading-relaxed">
             <strong>Prediction:</strong> {completionProbability.predictionText}
@@ -760,7 +760,7 @@ export function AutonomousWidgets({
               </div>
             ) : (
               <p className="text-xs italic text-neutral-500 leading-relaxed">
-                No active tasks! All missions completed. Type in Mission Control to declare your next strategic goals.
+                No active tasks! All missions completed. Type in Taskify Buddy to declare your next strategic goals.
               </p>
             )}
           </div>
@@ -1019,7 +1019,7 @@ export function AutonomousWidgets({
               </ul>
             ) : (
               <p className="text-xs italic text-neutral-500 leading-relaxed">
-                Ask Clutch in Mission Control to draft your hour-blocked schedule!
+                Ask Clutch in Taskify Buddy to draft your hour-blocked schedule!
               </p>
             )}
           </div>
@@ -1194,7 +1194,7 @@ export function AutonomousWidgets({
               </div>
             ) : (
               <p className="text-xs italic text-neutral-500 leading-relaxed">
-                No habits established yet. Ask Clutch AI in Mission Control to set up habit tracking for you!
+                No habits established yet. Ask Clutch AI in Taskify Buddy to set up habit tracking for you!
               </p>
             )}
           </div>
