@@ -33,19 +33,59 @@ export class CalendarSyncService {
       return { success: true, importedCount: 0, deletedCount: 0 };
     }
 
+    // Retrieve sync settings from google_accounts
+    const { data: accountRecord } = await supabase
+      .from("google_accounts")
+      .select("sync_settings")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const settings = (accountRecord as any)?.sync_settings || {
+      import_window: 90,
+      import_historical: false,
+      sync_recurring: false,
+      meeting_detection: true,
+      birthday_detection: false,
+      holiday_detection: false,
+      task_creation: "manual_suggest",
+      reminder_creation: true,
+      auto_ai_planning: false
+    };
+
+    // Calculate time window for full/initial sync
+    const now = new Date();
+    let timeMin: string | undefined = undefined;
+    let timeMax: string | undefined = undefined;
+
+    if (!calRecord.sync_token) {
+      if (settings.import_historical) {
+        const histDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        timeMin = histDate.toISOString();
+      } else {
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        timeMin = startOfToday.toISOString();
+      }
+
+      if (settings.import_window && settings.import_window > 0) {
+        const futureDate = new Date(now.getTime() + settings.import_window * 24 * 60 * 60 * 1000);
+        timeMax = futureDate.toISOString();
+      }
+    }
+
     // 2. Fetch events from Google
     let eventsResponse;
     try {
       eventsResponse = await GoogleCalendarClient.listEvents(userId, calendarId, {
         syncToken: calRecord.sync_token || undefined,
+        timeMin,
+        timeMax,
         singleEvents: true,
       });
     } catch (err: any) {
-      // Handle expired sync tokens (410 Gone) by resetting the sync token and doing a full sync
+      // Handle expired sync tokens (410 Gone)
       if (err.message?.includes("410") || err.message?.includes("Gone") || err.message?.includes("sync token is invalid")) {
         console.warn(`[SyncService] Sync token expired for calendar ${calendarId}. Resetting and performing full sync.`);
         
-        // Reset sync token in DB
         await supabase
           .from("google_calendars")
           .update({ sync_token: null })
@@ -53,6 +93,8 @@ export class CalendarSyncService {
 
         eventsResponse = await GoogleCalendarClient.listEvents(userId, calendarId, {
           singleEvents: true,
+          timeMin,
+          timeMax,
         });
       } else {
         console.error(`[SyncService] Failed to list events for calendar ${calendarId}:`, err);
@@ -75,6 +117,21 @@ export class CalendarSyncService {
       
       // If the event is cancelled/deleted
       if (item.status === "cancelled") {
+        const { data: localEv } = await supabase
+          .from("calendar_events")
+          .select("id, task_id")
+          .eq("user_id", userId)
+          .eq("google_event_id", googleEventId)
+          .maybeSingle();
+
+        if (localEv?.task_id) {
+          await supabase
+            .from("tasks")
+            .update({ status: "archived" })
+            .eq("id", localEv.task_id);
+          console.log(`[SyncService] Archived linked task ${localEv.task_id} for deleted event ${googleEventId}`);
+        }
+
         const { error: deleteError } = await supabase
           .from("calendar_events")
           .delete()
@@ -85,12 +142,19 @@ export class CalendarSyncService {
         continue;
       }
 
-      // Parse start and end times (could be date for all-day events, or dateTime)
+      // Parse start and end times
       const startIso = item.start?.dateTime || (item.start?.date ? `${item.start.date}T00:00:00Z` : null);
       const endIso = item.end?.dateTime || (item.end?.date ? `${item.end.date}T23:59:59Z` : null);
 
       if (!startIso || !endIso) {
         continue; // skip malformed events
+      }
+
+      // Ignore old events: do not sync if event has already ended
+      const endTimestamp = new Date(endIso).getTime();
+      if (endTimestamp < now.getTime()) {
+        console.log(`[SyncService] Skipping historical event: "${item.summary || "Untitled Event"}"`);
+        continue;
       }
 
       // Find primary meeting link
@@ -192,7 +256,7 @@ export class CalendarSyncService {
       console.log(`[SyncService] Running AI Event Understanding on ${newExternalEvents.length} new external events.`);
       import("@/lib/ai/calendar-ai-service").then(({ CalendarAiService }) => {
         for (const event of newExternalEvents) {
-          CalendarAiService.analyzeEventAndSync(userId, event, supabase).catch((err) => {
+          CalendarAiService.analyzeEventAndSync(userId, event, supabase, settings).catch((err) => {
             console.error(`[SyncService] AI Event reasoning failed for event ${event.id}:`, err);
           });
         }
@@ -204,7 +268,6 @@ export class CalendarSyncService {
 
   /**
    * Pushes a local event (e.g. deep-work focus block, travel buffer) to Google Calendar.
-   * Only does so if two-way sync is active or sync direction dictates it.
    */
   static async pushLocalEventToGoogle(
     userId: string,
@@ -240,7 +303,7 @@ export class CalendarSyncService {
       return false; // Skip external events; they are managed from Google
     }
 
-    // 3. Find the primary calendar ID (where we insert our blocks)
+    // 3. Find the primary calendar ID
     const { data: primaryCal } = await supabase
       .from("google_calendars")
       .select("calendar_id")
@@ -267,7 +330,6 @@ export class CalendarSyncService {
 
     try {
       if (event.google_event_id) {
-        // Update existing event in Google Calendar
         await GoogleCalendarClient.updateEvent(
           userId,
           calendarId,
@@ -276,10 +338,8 @@ export class CalendarSyncService {
         );
         console.log(`[SyncService] Updated Google Calendar event ${event.google_event_id} for local event ${eventId}`);
       } else {
-        // Create new event in Google Calendar
         const gEvent = await GoogleCalendarClient.createEvent(userId, calendarId, googleEventData);
         
-        // Save the generated google_event_id back to Supabase
         await supabase
           .from("calendar_events")
           .update({
@@ -333,7 +393,7 @@ export class CalendarSyncService {
       
       const expirationDate = response.expiration 
         ? new Date(Number(response.expiration)).toISOString()
-        : new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(); // fallback 7 days
+        : new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
 
       await supabase
         .from("google_calendars")

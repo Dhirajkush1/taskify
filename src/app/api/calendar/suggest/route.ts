@@ -24,7 +24,14 @@ export async function GET(request: NextRequest) {
     console.log(`[SuggestAPI] Running conflict analysis for date: ${dateStr}, user: ${user.id}`);
     const conflicts = await CalendarAiService.detectConflicts(user.id, targetDate, supabase);
 
-    return NextResponse.json({ data: conflicts });
+    // Fetch calendar events with pending AI task suggestions
+    const { data: suggestions } = await supabase
+      .from("calendar_events")
+      .select("id, title, start_time, ai_analysis")
+      .eq("user_id", user.id)
+      .eq("ai_analysis->>suggestion_status", "pending_approval");
+
+    return NextResponse.json({ data: conflicts, suggestions: suggestions || [] });
   } catch (err: any) {
     console.error("[SuggestAPI] Fatal error:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });

@@ -7,6 +7,7 @@ import { parseISO, addMinutes, subMinutes, format, isAfter, isBefore, startOfDay
 
 export interface AIAnalysisOutput {
   purpose: string;
+  classification: "Calendar Only" | "Reminder Only" | "Task" | "Task + Reminder" | "Task + Goal" | "Ignore";
   priority: "critical" | "high" | "medium" | "low";
   risk_level: "low" | "medium" | "high" | "critical";
   travel_required: boolean;
@@ -23,6 +24,7 @@ export interface AIAnalysisOutput {
     priority: "critical" | "high" | "medium" | "low";
     days_before_event: number; // when to complete
   }>;
+  suggestion_status?: "pending_approval" | "approved" | "ignored";
 }
 
 export class CalendarAiService {
@@ -34,7 +36,8 @@ export class CalendarAiService {
   static async analyzeEventAndSync(
     userId: string,
     event: any,
-    supabase: any
+    supabase: any,
+    settings?: any
   ): Promise<AIAnalysisOutput | null> {
     try {
       console.log(`[CalendarAIService] Running event analysis for event: "${event.title}"`);
@@ -46,34 +49,37 @@ export class CalendarAiService {
       const systemPrompt = `You are Clutch AI's Calendar Intelligence Engine.
 Analyze the following Google Calendar event details and output a detailed JSON analysis.
 Evaluate the title, description, location, and guests.
-Identify templates:
-- If it's an Exam, return preparation study plans, revision timeline, focus sessions.
-- If it's a Flight/Travel, calculate packing checklist, airport travel buffer, boarding reminder.
-- If it's an Interview, return resume review, company research, practice questions.
-- If it's a client/team Meeting, return document review, questions prep task.
-- Otherwise, map it to a standard professional task or reminder list.
+
+Identify category:
+- "Calendar Only": The event is a standard meeting, standup, holiday, birthday, or private block with no actionable checklist.
+- "Reminder Only": Simple task like paying a bill or a quick reminder.
+- "Task": Event requiring significant action/delivery before or during it.
+- "Task + Reminder": Actionable item with strict deadline reminder needed.
+- "Task + Goal": Major strategic milestone.
+- "Ignore": Public holiday, personal lunch, or spam invites.
 
 You MUST respond with a single, strictly valid JSON object matching the schema below. Output nothing else.
 
 JSON SCHEMA:
 {
   "purpose": "Brief summary of what this event is about",
+  "classification": "Calendar Only" | "Reminder Only" | "Task" | "Task + Reminder" | "Task + Goal" | "Ignore",
   "priority": "critical" | "high" | "medium" | "low",
   "risk_level": "low" | "medium" | "high" | "critical",
-  "travel_required": true/false (true if location implies physical travel like an airport, office across town, restaurant, etc.),
-  "travel_time_minutes": integer (estimated travel time, e.g. 30, 45, 60 or 0 if travel_required is false),
-  "preparation_required": true/false (true if this event requires reading, research, studying, or document review beforehand),
-  "preparation_time_minutes": integer (estimated prep minutes required, e.g. 15, 30, 60, 120 or 0),
+  "travel_required": true/false,
+  "travel_time_minutes": integer (minutes or 0),
+  "preparation_required": true/false,
+  "preparation_time_minutes": integer (minutes or 0),
   "estimated_energy": "low" | "medium" | "high",
-  "suggested_focus_hours": float (hours of focus blocks to book for prep),
-  "dependencies": ["Any other calendar events or tasks this depends on"],
+  "suggested_focus_hours": float,
+  "dependencies": [],
   "suggested_tasks": [
     {
       "title": "Actionable task name (e.g. Prepare presentation for X)",
       "description": "Short explanation",
       "estimated_duration": minutes (integer),
       "priority": "critical" | "high" | "medium" | "low",
-      "days_before_event": integer (how many days before the event this task should be completed)
+      "days_before_event": integer
     }
   ]
 }`;
@@ -104,6 +110,20 @@ JSON SCHEMA:
       const cleanedJson = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const analysis: AIAnalysisOutput = JSON.parse(cleanedJson);
 
+      const classification = analysis.classification || "Calendar Only";
+
+      // Prevent duplicate/storm updates for recurring items
+      const isRecurring = !!(event.recurring_event_id || (event.recurrence && event.recurrence.length > 0));
+      const activeClassification = (isRecurring && !settings?.sync_recurring) ? "Calendar Only" : classification;
+
+      // Handle suggests vs auto-creation
+      const isActionable = activeClassification.startsWith("Task") || activeClassification === "Reminder Only";
+      const taskCreationMode = settings?.task_creation || "manual_suggest";
+
+      if (isActionable && taskCreationMode === "manual_suggest") {
+        analysis.suggestion_status = "pending_approval";
+      }
+
       // Save AI analysis back to calendar_events
       await supabase
         .from("calendar_events")
@@ -113,13 +133,34 @@ JSON SCHEMA:
         })
         .eq("id", event.id);
 
-      console.log(`[CalendarAIService] Saved AI Analysis for event: "${event.title}". Risk: ${analysis.risk_level}, Prep Minutes: ${analysis.preparation_time_minutes}`);
+      console.log(`[CalendarAIService] Saved AI Analysis for event: "${event.title}". Classification: ${activeClassification}, Status: ${analysis.suggestion_status || "auto"}`);
 
-      // 1. Create prep tasks suggested by AI
-      if (analysis.suggested_tasks && analysis.suggested_tasks.length > 0) {
+      // If suggesting, we skip automatic task insertion and wait for user approval
+      if (analysis.suggestion_status === "pending_approval") {
+        return analysis;
+      }
+
+      // 1. Create tasks automatically if enabled
+      let firstTaskId: string | null = null;
+      if (isActionable && taskCreationMode === "auto" && analysis.suggested_tasks && analysis.suggested_tasks.length > 0) {
         for (const t of analysis.suggested_tasks) {
           const taskDeadline = subMinutes(eventStart, t.days_before_event * 24 * 60);
           
+          // Duplicate prevention: check for existing task linked to this event title & user
+          const { data: existingTasks } = await supabase
+            .from("tasks")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("title", t.title)
+            .neq("status", "archived")
+            .limit(1);
+
+          if (existingTasks && existingTasks.length > 0) {
+            console.log(`[CalendarAIService] Task already exists for "${t.title}". Skipping duplicate insert.`);
+            if (!firstTaskId) firstTaskId = existingTasks[0].id;
+            continue;
+          }
+
           const { data: taskData, error: taskError } = await supabase
             .from("tasks")
             .insert({
@@ -131,21 +172,47 @@ JSON SCHEMA:
               status: "todo",
               estimated_duration: t.estimated_duration,
               risk_level: analysis.risk_level,
-              completion_probability: 100
+              completion_probability: 100,
+              source: "google_calendar"
             })
             .select()
             .single();
 
           if (taskError) {
             console.error(`[CalendarAIService] Failed to create prep task "${t.title}":`, taskError.message);
-          } else {
+          } else if (taskData) {
             console.log(`[CalendarAIService] Created prep task: "${t.title}" for event "${event.title}"`);
+            if (!firstTaskId) firstTaskId = taskData.id;
+
+            // Link task back to the event
+            await supabase
+              .from("calendar_events")
+              .update({ task_id: taskData.id })
+              .eq("id", event.id);
           }
         }
       }
 
-      // 2. Schedule Travel Buffer Block if travel is required
-      if (analysis.travel_required && analysis.travel_time_minutes > 0) {
+      // 2. Create Reminders if enabled
+      const reminderEnabled = settings?.reminder_creation !== false;
+      if (reminderEnabled && (activeClassification.includes("Reminder") || activeClassification === "Reminder Only")) {
+        const { ReminderService } = await import("./reminder-service");
+        await ReminderService.createReminder(
+          userId,
+          {
+            title: `Reminder: ${event.title}`,
+            reminder_time: event.start_time,
+            reminder_type: "specific_time",
+            task_id: firstTaskId
+          },
+          supabase
+        ).catch(err => {
+          console.error(`[CalendarAIService] Failed to schedule reminder for "${event.title}":`, err);
+        });
+      }
+
+      // 3. Schedule Travel Buffer Block if travel is required and auto AI planning is active
+      if (settings?.auto_ai_planning && analysis.travel_required && analysis.travel_time_minutes > 0) {
         const bufferStart = subMinutes(eventStart, Math.max(15, analysis.travel_time_minutes));
         const bufferEnd = eventStart;
 
@@ -170,16 +237,14 @@ JSON SCHEMA:
         if (bufferError) {
           console.error(`[CalendarAIService] Failed to insert travel buffer event:`, bufferError.message);
         } else if (bufferEvent) {
-          // Push to Google Calendar
           CalendarSyncService.pushLocalEventToGoogle(userId, bufferEvent.id, supabase).catch(err => {
             console.error("[CalendarAIService] Webhook sync travel buffer failed:", err);
           });
         }
       }
 
-      // 3. Schedule Meeting Prep block if required
-      if (analysis.preparation_required && analysis.preparation_time_minutes > 0) {
-        // Meeting Prep blocks are placed directly before the travel buffer, or before the event itself
+      // 4. Schedule Meeting Prep block if required and auto AI planning is active
+      if (settings?.auto_ai_planning && analysis.preparation_required && analysis.preparation_time_minutes > 0) {
         const offsetMinutes = (analysis.travel_required && analysis.travel_time_minutes > 0) 
           ? analysis.travel_time_minutes 
           : 0;
@@ -207,7 +272,6 @@ JSON SCHEMA:
         if (prepError) {
           console.error(`[CalendarAIService] Failed to insert prep event:`, prepError.message);
         } else if (prepEvent) {
-          // Push to Google Calendar
           CalendarSyncService.pushLocalEventToGoogle(userId, prepEvent.id, supabase).catch(err => {
             console.error("[CalendarAIService] Webhook sync prep event failed:", err);
           });
