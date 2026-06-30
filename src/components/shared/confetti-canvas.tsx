@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 // Global event name for triggering confetti
 const CONFETTI_EVENT = "clutch-trigger-confetti";
@@ -23,22 +23,22 @@ interface Particle {
   opacity: number;
 }
 
+const colors = [
+  "#a78bfa", // violet
+  "#f43f5e", // rose
+  "#38bdf8", // sky
+  "#34d399", // emerald
+  "#fbbf24", // amber
+  "#f472b6", // pink
+];
+
 export function ConfettiCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [active, setActive] = useState(false);
   const particlesRef = useRef<Particle[]>([]);
   const animationFrameRef = useRef<number | null>(null);
 
-  const colors = [
-    "#a78bfa", // violet
-    "#f43f5e", // rose
-    "#38bdf8", // sky
-    "#34d399", // emerald
-    "#fbbf24", // amber
-    "#f472b6", // pink
-  ];
-
-  const spawnConfetti = () => {
+  const spawnConfetti = useCallback(() => {
     setActive(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -63,7 +63,7 @@ export function ConfettiCanvas() {
     }
 
     particlesRef.current = [...particlesRef.current, ...newParticles];
-  };
+  }, []);
 
   useEffect(() => {
     const handleTrigger = () => {
@@ -74,7 +74,7 @@ export function ConfettiCanvas() {
     return () => {
       window.removeEventListener(CONFETTI_EVENT, handleTrigger);
     };
-  }, []);
+  }, [spawnConfetti]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

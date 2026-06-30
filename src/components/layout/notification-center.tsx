@@ -1,96 +1,120 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Sparkles, AlertCircle, ShieldAlert, Check, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
 interface SmartNotification {
   id: string;
-  type: "urgency" | "blocker" | "incentive";
+  type: "urgency" | "blocker" | "incentive" | "reminder" | "follow_up";
   title: string;
   message: string;
   read: boolean;
   time: string;
+  task_id?: string | null;
+}
+
+function formatRelativeTime(isoString: string): string {
+  const elapsed = Date.now() - new Date(isoString).getTime();
+  const mins = Math.round(elapsed / (1000 * 60));
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(isoString).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<SmartNotification[]>([]);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+
+  const loadNotifications = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Fetch notifications from the database
+    const { data: dbNotifs, error } = await (supabase
+      .from("notifications") as any)
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error("[NotificationCenter] Error fetching notifications:", error.message);
+      return;
+    }
+
+    const mapped: SmartNotification[] = (dbNotifs || []).map((n: any) => ({
+      id: n.id,
+      type: n.type as any,
+      title: n.title,
+      message: n.message,
+      read: n.read,
+      time: formatRelativeTime(n.created_at),
+      task_id: n.task_id
+    }));
+
+    setNotifications(mapped);
+  };
 
   useEffect(() => {
-    async function loadNotifications() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // 1. Fetch active tasks to compile smart, context-aware notifications
-      const { data: tasks } = await supabase
-        .from("tasks")
-        .select("*")
-        .eq("user_id", user.id)
-        .neq("status", "done")
-        .neq("status", "archived");
-
-      if (!tasks || tasks.length === 0) {
-        setNotifications([
-          {
-            id: "1",
-            type: "incentive",
-            title: "Missions Clear! 🚀",
-            message: "Your schedule is clear. Start a new milestone to build momentum!",
-            read: false,
-            time: "Just now",
-          },
-        ]);
-        return;
+    // Request native notification permission on mount
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
       }
-
-      const list: SmartNotification[] = [];
-
-      // Add a smart, time-aware urgency notification
-      const upcoming = tasks.find((t) => t.deadline);
-      if (upcoming) {
-        const duration = upcoming.estimated_duration || 45;
-        list.push({
-          id: "urgency-1",
-          type: "urgency",
-          title: "Optimized Start Window ⏱️",
-          message: `You still have enough time to finish "${upcoming.title}" if you start within 30 minutes.`,
-          read: false,
-          time: "5m ago",
-        });
-      }
-
-      // Add blocker dependency alert
-      const blocked = tasks.find((t) => t.dependencies && (t.dependencies as string[]).length > 0);
-      if (blocked) {
-        const deps = blocked.dependencies as string[];
-        list.push({
-          id: "blocker-1",
-          type: "blocker",
-          title: "Blocker Alert 🔗",
-          message: `"${blocked.title}" is currently locked. Resolve [${deps.join(", ")}] first.`,
-          read: false,
-          time: "15m ago",
-        });
-      }
-
-      // Add a motivational productivity incentive
-      list.push({
-        id: "incentive-1",
-        type: "incentive",
-        title: "Daily Goal Synergy 🏆",
-        message: "Completing today's recommended tasks will boost your Success Probability by 18%!",
-        read: false,
-        time: "1h ago",
-      });
-
-      setNotifications(list);
     }
 
     loadNotifications();
+
+    // Subscribe to realtime changes on notifications table
+    const channel = supabase
+      .channel("realtime-notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+        },
+        (payload: any) => {
+          loadNotifications();
+
+          // If a new unread notification was inserted, trigger a native browser alert!
+          if (
+            payload.eventType === "INSERT" &&
+            !payload.new.read &&
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            const nativeNotif = new Notification(payload.new.title || "Clutch AI Notification", {
+              body: payload.new.message || "",
+              icon: "/favicon.ico"
+            });
+
+            nativeNotif.onclick = async () => {
+              window.focus();
+              // Mark as read in DB
+              await (supabase
+                .from("notifications") as any)
+                .update({ read: true })
+                .eq("id", payload.new.id);
+
+              if (payload.new.task_id) {
+                router.push("/tasks");
+              }
+            };
+          }
+        }
+      )
+      .subscribe();
 
     // Close dropdown on click outside
     const handleClickOutside = (e: MouseEvent) => {
@@ -99,19 +123,45 @@ export function NotificationCenter() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+
+    return () => {
+      supabase.removeChannel(channel);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await (supabase
+      .from("notifications") as any)
+      .update({ read: true })
+      .eq("user_id", user.id)
+      .eq("read", false);
+
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  const toggleRead = (id: string) => {
+  const handleNotificationClick = async (notif: SmartNotification) => {
+    // Mark as read in Supabase
+    await (supabase
+      .from("notifications") as any)
+      .update({ read: true })
+      .eq("id", notif.id);
+
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n))
+      prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n))
     );
+
+    setIsOpen(false);
+
+    if (notif.task_id) {
+      router.push("/tasks");
+    }
   };
 
   return (
@@ -167,7 +217,7 @@ export function NotificationCenter() {
                   return (
                     <div
                       key={notif.id}
-                      onClick={() => toggleRead(notif.id)}
+                      onClick={() => handleNotificationClick(notif)}
                       className={`flex flex-col gap-1 p-2.5 rounded-xl border cursor-pointer transition-all ${
                         notif.read
                           ? "bg-neutral-900/20 border-neutral-800/40 opacity-60"
@@ -179,6 +229,8 @@ export function NotificationCenter() {
                           {notif.type === "urgency" && <Clock className="w-3.5 h-3.5 text-amber-400" />}
                           {notif.type === "blocker" && <ShieldAlert className="w-3.5 h-3.5 text-red-400" />}
                           {notif.type === "incentive" && <Sparkles className="w-3.5 h-3.5 text-violet-400" />}
+                          {notif.type === "reminder" && <Bell className="w-3.5 h-3.5 text-blue-400" />}
+                          {notif.type === "follow_up" && <AlertCircle className="w-3.5 h-3.5 text-violet-400" />}
                           <span className="text-[10px] font-bold text-neutral-200">{notif.title}</span>
                         </div>
                         <span className="text-[8px] text-neutral-500 font-medium">{notif.time}</span>

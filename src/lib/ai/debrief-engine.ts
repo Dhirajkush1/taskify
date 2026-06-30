@@ -1,7 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
+import { AIClient } from "@/lib/ai/providers";
 
-export interface DailyDebriefData {
+export type DailyDebriefData = {
   summary: string;
   metrics: {
     completion_rate: number;
@@ -16,9 +17,9 @@ export interface DailyDebriefData {
   tomorrow_probability: number;
   best_achievement: string;
   missed_opportunities: string[];
-}
+};
 
-export interface WeeklyReflectionData {
+export type WeeklyReflectionData = {
   start_date: string;
   end_date: string;
   reflection_text: string;
@@ -33,14 +34,9 @@ export interface WeeklyReflectionData {
   burnout_trend: Array<{ date: string; score: number }>;
   coaching_advice: string;
   suggested_changes: string[];
-}
+};
 
 export class DebriefEngine {
-  private static getGenAI() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return null;
-    return new GoogleGenerativeAI(apiKey);
-  }
 
   /**
    * Generates or fetches the daily debrief for a user on a specific date.
@@ -60,14 +56,19 @@ export class DebriefEngine {
     if (existing) {
       return {
         summary: existing.summary,
-        metrics: existing.metrics,
-        completed_tasks: existing.completed_tasks,
-        delayed_tasks: existing.delayed_tasks,
-        improvements: existing.improvements,
-        tomorrow_priorities: existing.tomorrow_priorities,
-        tomorrow_probability: existing.tomorrow_probability,
-        best_achievement: existing.best_achievement,
-        missed_opportunities: existing.missed_opportunities
+        metrics: (existing.metrics as unknown as DailyDebriefData["metrics"]) || {
+          completion_rate: 0,
+          focus_time_minutes: 0,
+          productivity_score: 0,
+          current_streak: 0
+        },
+        completed_tasks: (existing.completed_tasks as string[]) || [],
+        delayed_tasks: (existing.delayed_tasks as string[]) || [],
+        improvements: (existing.improvements as string[]) || [],
+        tomorrow_priorities: (existing.tomorrow_priorities as string[]) || [],
+        tomorrow_probability: existing.tomorrow_probability ?? 0,
+        best_achievement: existing.best_achievement || "",
+        missed_opportunities: (existing.missed_opportunities as string[]) || []
       };
     }
 
@@ -83,22 +84,20 @@ export class DebriefEngine {
       .eq("user_id", userId)
       .gte("created_at", `${targetDateStr}T00:00:00Z`);
 
-    const { data: memory } = await supabase
-      .from("ai_memory")
+    const { data: memories } = await supabase
+      .from("user_memories")
       .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
 
-    const { data: settings } = await supabase
-      .from("settings")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const memoryMap: Record<string, string> = {};
+    if (memories) {
+      for (const m of memories) {
+        memoryMap[m.memory_key] = m.memory_value;
+      }
+    }
 
     const allTasks = tasks || [];
     const sessions = focusSessions || [];
-    const userMemory = memory || {};
-    const userSettings = settings || {};
 
     const completedToday = allTasks.filter(
       (t) => t.status === "done" && t.updated_at && t.updated_at.startsWith(targetDateStr)
@@ -111,56 +110,47 @@ export class DebriefEngine {
     const totalToday = completedToday.length + delayedToday.length;
     const completionRate = totalToday > 0 ? Math.round((completedToday.length / totalToday) * 100) : 100;
 
-    const genAI = this.getGenAI();
-    if (!genAI) {
-      console.warn("Gemini API key missing for DebriefEngine.");
-      return null;
-    }
-
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `You are Clutch AI's Daily Debrief Engine. Analyze the user's productivity data for today (${targetDateStr}) and generate a daily debrief report.
 
-      const context = {
-        date: targetDateStr,
-        userPreferences: {
-          memory: userMemory.memory_data || {},
-          working_hours: userSettings.preferred_work_hours || "9:00 - 17:00"
-        },
-        todayCompleted: completedToday.map((t) => t.title),
-        todayDelayed: delayedToday.map((t) => t.title),
-        focusMinutes,
-        completionRate
-      };
+User Memories / Context:
+${JSON.stringify(memoryMap, null, 2)}
 
-      const prompt = `You are Clutch, the personalized AI Productivity Companion. 
-Your goal is to generate a highly personal, insightful Daily Debrief summarizing the user's productivity today:
+Today's Tasks:
+- Completed: ${JSON.stringify(completedToday.map((t) => t.title))}
+- Delayed: ${JSON.stringify(delayedToday.map((t) => t.title))}
 
-Today's context:
-${JSON.stringify(context, null, 2)}
-
-Create a summary that feels deeply encouraging and personalized. Rather than just listing numbers, analyze their working habits, praise their completed tasks, point out missed opportunities or delayed items gently, highlight their best achievement of the day, and map out their priorities for tomorrow.
+Today's Metrics:
+- Focus Session Minutes: ${focusMinutes}
+- Completion Rate: ${completionRate}%
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "summary": "Personal, conversational, and motivating 2-3 sentence daily summary",
-  "best_achievement": "Name of their single most significant win of the day",
-  "tomorrow_probability": integer (0-100, predicted success probability for tomorrow),
-  "tomorrow_priorities": ["Priority task 1", "Priority task 2"],
-  "improvements": ["Specific improvement recommendation 1", "Specific improvement recommendation 2"],
-  "missed_opportunities": ["Gently noted missed opportunity or delayed task context"],
+  "summary": "concise daily recap of work, progress, and mindset",
+  "best_achievement": "single best win/achievement of the day",
+  "tomorrow_probability": 0-100 (integer, predicted probability of finishing tomorrow's scheduled goals),
+  "tomorrow_priorities": ["list of top 2-3 task priorities recommended for tomorrow"],
+  "improvements": ["constructive actions or adjustments to improve productivity tomorrow"],
+  "missed_opportunities": ["brief description of delayed tasks or missed momentum"],
   "metrics": {
-    "completion_rate": integer,
-    "focus_time_minutes": integer,
-    "productivity_score": integer (0-100 rating of the day),
-    "current_streak": integer (streak value)
+    "productivity_score": 0-100 (integer, overall productivity score),
+    "current_streak": number (current streak of productive days)
   }
 }
 
-Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
+Do not wrap the response in markdown formatting or include any other text. Output pure JSON.`;
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          responseMimeType: "application/json"
+        }
+      );
+      const cleaned = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const parsed = JSON.parse(cleaned);
 
       const debriefData: DailyDebriefData = {
@@ -170,6 +160,8 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
         tomorrow_priorities: parsed.tomorrow_priorities || [],
         improvements: parsed.improvements || [],
         missed_opportunities: parsed.missed_opportunities || [],
+        completed_tasks: completedToday.map((t) => t.title),
+        delayed_tasks: delayedToday.map((t) => t.title),
         metrics: {
           completion_rate: completionRate,
           focus_time_minutes: focusMinutes,
@@ -199,7 +191,8 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
       // Log event
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "DailyDebriefGenerated",
+        action: "DailyDebriefGenerated",
+        entity_type: "system",
         metadata: { date: targetDateStr, score: debriefData.metrics.productivity_score }
       });
 
@@ -265,12 +258,17 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
         start_date: existing.start_date,
         end_date: existing.end_date,
         reflection_text: existing.reflection_text,
-        metrics: existing.metrics,
-        weekly_wins: existing.weekly_wins,
-        focus_trends: existing.focus_trends,
-        burnout_trend: existing.burnout_trend,
-        coaching_advice: existing.coaching_advice,
-        suggested_changes: existing.suggested_changes
+        metrics: (existing.metrics as unknown as WeeklyReflectionData["metrics"]) || {
+          completion_rate: 0,
+          best_working_day: "",
+          best_working_hours: "",
+          most_delayed_category: ""
+        },
+        weekly_wins: (existing.weekly_wins as string[]) || [],
+        focus_trends: (existing.focus_trends as WeeklyReflectionData["focus_trends"]) || [],
+        burnout_trend: (existing.burnout_trend as WeeklyReflectionData["burnout_trend"]) || [],
+        coaching_advice: existing.coaching_advice || "",
+        suggested_changes: (existing.suggested_changes as string[]) || []
       };
     }
 
@@ -289,59 +287,56 @@ Do not wrap in markdown tags or add conversational text. Output pure JSON.`;
       minutes: h.focus_time_minutes || 0
     }));
 
-    const burnoutTrend = historyLogs.map((h) => ({
-      date: h.recorded_date,
-      score: h.stress_index || 0
-    }));
+    const burnoutTrend = historyLogs.map((h) => {
+      let score = 0;
+      if (h.details && typeof h.details === "object" && !Array.isArray(h.details)) {
+        const val = h.details["stress_index"];
+        if (typeof val === "number") {
+          score = val;
+        }
+      }
+      return {
+        date: h.recorded_date,
+        score
+      };
+    });
 
     // Formulate weekly analytics using Gemini
-    const genAI = this.getGenAI();
-    if (!genAI) {
-      console.warn("Gemini API key missing for weekly reflection.");
-      return null;
-    }
-
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `You are Clutch AI's Weekly Reflection Engine. Analyze the user's weekly productivity history and generate a reflective report.
 
-      const context = {
-        startDate: startDateStr,
-        endDate: endDateStr,
-        logs: historyLogs.map((h) => ({
-          date: h.recorded_date,
-          completed: h.tasks_completed_count,
-          focus_minutes: h.focus_time_minutes,
-          stress: h.stress_index
-        }))
-      };
-
-      const prompt = `You are Clutch, the premier AI productivity advisor.
-Generate a Weekly Reflection summarizing the user's performance and wellness over the past 7 days.
-
-Weekly logs:
-${JSON.stringify(context, null, 2)}
-
-Provide a deeply analytical, coaching-oriented reflection. Detail their weekly wins, identify their best working day and hours, call out burnout trends, and outline suggested structural changes.
+Weekly Context (${startDateStr} to ${endDateStr}):
+- Focus Trends: ${JSON.stringify(focusTrends)}
+- Stress / Burnout Trends: ${JSON.stringify(burnoutTrend)}
+- Daily Metrics Log: ${JSON.stringify(historyLogs.map(h => ({ date: h.recorded_date, completion_probability_average: h.completion_probability_average, focus_time_minutes: h.focus_time_minutes, tasks_completed_count: h.tasks_completed_count })))}
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "reflection_text": "A comprehensive weekly analysis and performance summary (2-3 paragraphs)",
-  "coaching_advice": "Actionable coaching and habit modification advice",
-  "weekly_wins": ["Win 1", "Win 2", "Win 3"],
-  "suggested_changes": ["Structural change 1", "Structural change 2"],
+  "reflection_text": "summary of the week's performance, consistency, focus habits, and mental fatigue",
+  "coaching_advice": "personalized wellness and productivity coaching tips on preventing burnout, pacing, or work-life balance",
+  "weekly_wins": ["list of 2-3 major wins or achievements this week"],
+  "suggested_changes": ["actionable adjustments recommended for next week to optimize focus/prevent stress"],
   "metrics": {
-    "completion_rate": integer (average completion rate),
-    "best_working_day": "e.g. Wednesday",
-    "best_working_hours": "e.g. 10:00 - 12:00",
-    "most_delayed_category": "e.g. Study / Coding"
+    "completion_rate": 0-100 (integer, overall task completion rate for the week),
+    "best_working_day": "e.g., Monday, Tuesday",
+    "best_working_hours": "e.g., 09:00 - 11:00, 14:00 - 16:00",
+    "most_delayed_category": "the category/area where tasks were most delayed or overdue"
   }
 }
 
-Do not wrap in markdown or add conversational text. Return raw JSON.`;
+Do not wrap the response in markdown formatting or include any other text. Output pure JSON.`;
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          responseMimeType: "application/json"
+        }
+      );
+      const cleaned = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const parsed = JSON.parse(cleaned);
 
       const reflectionData: WeeklyReflectionData = {
@@ -381,7 +376,8 @@ Do not wrap in markdown or add conversational text. Return raw JSON.`;
       // Log event
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "WeeklyReflectionGenerated",
+        action: "WeeklyReflectionGenerated",
+        entity_type: "system",
         metadata: { start: startDateStr, end: endDateStr }
       });
 

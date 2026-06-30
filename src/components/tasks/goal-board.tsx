@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Target, Milestone, Plus, Calendar, Loader2, Sparkles, CheckCircle2, ChevronRight, ListTodo, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -18,13 +18,12 @@ interface MilestoneData {
   goal_id: string;
   title: string;
   description: string;
-  target_date: string;
   status: string;
 }
 
 interface TaskData {
   id: string;
-  milestone_id: string;
+  milestone_id: string | null;
   title: string;
   status: string;
   priority: string;
@@ -49,9 +48,9 @@ export function GoalBoard() {
   const [milestoneDesc, setMilestoneDesc] = useState("");
   const [milestoneDate, setMilestoneDate] = useState("");
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -61,16 +60,16 @@ export function GoalBoard() {
         supabase.from("tasks").select("id, milestone_id, title, status, priority").eq("user_id", user.id),
       ]);
 
-      setGoals(goalsRes.data || []);
-      setMilestones(milestonesRes.data || []);
-      setTasks(tasksRes.data || []);
+      setGoals((goalsRes.data as unknown as Goal[]) || []);
+      setMilestones((milestonesRes.data as unknown as MilestoneData[]) || []);
+      setTasks((tasksRes.data as unknown as TaskData[]) || []);
     }
     setLoading(false);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleCreateGoal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +82,7 @@ export function GoalBoard() {
         title: goalTitle,
         description: goalDesc || null,
         target_date: goalDate || null,
-        status: "active",
+        status: "active" as const,
       });
 
       if (!error) {
@@ -108,7 +107,7 @@ export function GoalBoard() {
         title: milestoneTitle,
         description: milestoneDesc || null,
         target_date: milestoneDate || null,
-        status: "todo",
+        status: "todo" as const,
       })
       .select()
       .single();
@@ -293,7 +292,7 @@ export function GoalBoard() {
         <div className="rounded-2xl border border-dashed border-neutral-800 p-8 text-center flex flex-col items-center justify-center gap-3">
           <Target className="w-10 h-10 text-neutral-600" />
           <p className="text-xs text-neutral-400 max-w-xs leading-relaxed">
-            You haven't added any goals yet. Build a strategic vision by creating your first Goal!
+            You haven&apos;t added any goals yet. Build a strategic vision by creating your first Goal!
           </p>
         </div>
       ) : (

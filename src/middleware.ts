@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
@@ -14,16 +14,30 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(
+          cookiesToSet: {
+            name: string;
+            value: string;
+            options: CookieOptions;
+          }[]
+        ) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({
             request,
           });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, {
+              domain: options.domain,
+              path: options.path,
+              maxAge: options.maxAge,
+              secure: options.secure,
+              httpOnly: options.httpOnly,
+              sameSite: options.sameSite === true ? "lax" : options.sameSite === false ? undefined : options.sameSite,
+              expires: options.expires,
+            });
+          });
         },
       },
     }
@@ -37,7 +51,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Protected routes — redirect to login if not authenticated
-  const protectedPaths = ["/dashboard", "/mission-control", "/tasks", "/calendar", "/settings", "/profile"];
+  const protectedPaths = ["/dashboard", "/taskify-buddy", "/tasks", "/calendar", "/settings", "/profile", "/reminders"];
   const isProtectedRoute = protectedPaths.some((path) =>
     pathname.startsWith(path)
   );

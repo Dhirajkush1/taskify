@@ -47,7 +47,7 @@ export function TodayMissions({ tasks }: TodayMissionsProps) {
           <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
             All clear! No active missions.
           </p>
-          <Link href="/mission-control">
+          <Link href="/taskify-buddy">
             <button
               className="mt-3 text-xs font-medium px-3 py-1.5 rounded-lg"
               style={{ background: "var(--primary-muted)", color: "var(--primary)" }}

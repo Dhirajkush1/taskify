@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient, AIMessage } from "@/lib/ai/providers";
 import { TelegramBotService } from "@/lib/telegram/bot-service";
 import { ContextBuilder } from "@/lib/ai/context-builder";
 import { ActionOrchestrator } from "@/lib/ai/action-orchestrator";
@@ -8,13 +8,14 @@ import { AUTONOMOUS_SYSTEM_PROMPT } from "@/lib/ai/ai-service";
 import { RescueEngine } from "@/lib/ai/rescue-engine";
 import { DebriefEngine } from "@/lib/ai/debrief-engine";
 import { SimulationEngine } from "@/lib/ai/simulation-engine";
+import type { Database } from "@/types/database.types";
 
 export const runtime = "nodejs";
 
 // Instantiate Supabase Admin client with Service Role Key to execute background processes
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "dummy-service-role-key-for-build-time"
 );
 
 /**
@@ -26,39 +27,77 @@ export async function POST(request: NextRequest) {
     const update = await request.json();
     console.log("[TelegramWebhook] Received update:", JSON.stringify(update));
 
-    // 1. Handle Callback Queries (Button Clicks)
-    if (update.callback_query) {
-      await handleCallbackQuery(update.callback_query);
+    const message = update.message;
+    const callbackQuery = update.callback_query;
+    
+    const chatId = message?.chat?.id || callbackQuery?.message?.chat?.id;
+    const telegramUserId = message?.from?.id || callbackQuery?.from?.id;
+    const text = message?.text?.trim();
+
+    // 1. Identify User ID for logging
+    let userId: string | null = null;
+    let potentialCode: string | null = null;
+
+    if (text) {
+      const linkingCodeMatch = text.match(/^(?:CL-[A-Z2-9]{5})|(?:\/start\s+(CL-[A-Z2-9]{5}))$/i);
+      potentialCode = linkingCodeMatch ? (linkingCodeMatch[1] || linkingCodeMatch[0]).toUpperCase() : null;
+    }
+
+    if (telegramUserId) {
+      const { data: account } = await supabaseAdmin
+        .from("telegram_accounts")
+        .select("user_id")
+        .eq("telegram_user_id", telegramUserId)
+        .maybeSingle();
+      if (account?.user_id) {
+        userId = account.user_id;
+      }
+    }
+
+    if (!userId && potentialCode) {
+      const { data: account } = await supabaseAdmin
+        .from("telegram_accounts")
+        .select("user_id")
+        .eq("linking_code", potentialCode)
+        .maybeSingle();
+      if (account?.user_id) {
+        userId = account.user_id;
+      }
+    }
+
+    // Write structured webhook received log
+    if (userId) {
+      try {
+        await supabaseAdmin.from("activity_logs").insert({
+          user_id: userId,
+          action: "TelegramWebhookReceived",
+          entity_type: "telegram",
+          entity_id: chatId ? String(chatId) : null,
+          metadata: { update }
+        });
+      } catch (logErr) {
+        console.error("[TelegramWebhook] Failed to write webhook log to activity_logs:", logErr);
+      }
+    }
+
+    // 2. Handle Callback Queries (Button Clicks)
+    if (callbackQuery) {
+      await handleCallbackQuery(callbackQuery);
       return NextResponse.json({ ok: true });
     }
 
-    const message = update.message;
     if (!message) {
       return NextResponse.json({ ok: true });
     }
 
-    const chatId = message.chat.id;
-    const telegramUserId = message.from.id;
-    const text = message.text?.trim();
-
-    // 2. Handle Account Linking Flow (e.g. /start CL-8F2A or entering the code directly)
-    const linkingCodeMatch = text?.match(/^(?:CL-[A-Z2-9]{5})|(?:\/start\s+(CL-[A-Z2-9]{5}))$/i);
-    const potentialCode = linkingCodeMatch ? (linkingCodeMatch[1] || linkingCodeMatch[0]).toUpperCase() : null;
-
+    // 3. Handle Account Linking Flow (e.g. /start CL-8F2A or entering the code directly)
     if (potentialCode) {
       const success = await handleAccountLinking(chatId, telegramUserId, potentialCode);
       return NextResponse.json({ ok: true });
     }
 
-    // 3. Authenticate & Retrieve Linked User
-    const { data: account, error: accountError } = await supabaseAdmin
-      .from("telegram_accounts")
-      .select("user_id")
-      .eq("telegram_user_id", telegramUserId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (accountError || !account) {
+    // 4. Authenticate & Retrieve Linked User
+    if (!userId) {
       const welcomeText = `
 👋 <b>Welcome to Clutch AI!</b>
 
@@ -76,15 +115,13 @@ Once connected, I will become your autonomous productivity companion, synchroniz
       return NextResponse.json({ ok: true });
     }
 
-    const userId = account.user_id;
-
-    // 4. Process Quick System Commands
+    // 5. Process Quick System Commands
     if (text?.startsWith("/")) {
       const processed = await handleBotCommands(chatId, userId, text);
       if (processed) return NextResponse.json({ ok: true });
     }
 
-    // 5. Run AI Dialogue Pipeline (Natural Chat, Voice Notes, or Attachments)
+    // 6. Run AI Dialogue Pipeline (Natural Chat, Voice Notes, or Attachments)
     await handleAIDialogue(chatId, userId, message);
     return NextResponse.json({ ok: true });
 
@@ -115,6 +152,14 @@ async function handleAccountLinking(chatId: number, telegramUserId: number, code
     return false;
   }
 
+  if (!account.linking_code_expires_at) {
+    await TelegramBotService.sendMessage(
+      chatId,
+      "⚠️ <b>Linking Code Invalid</b>\n\nThat linking code has no expiry. Please generate a fresh code in Settings."
+    );
+    return false;
+  }
+
   const expiresAt = new Date(account.linking_code_expires_at).getTime();
   if (expiresAt < Date.now()) {
     await TelegramBotService.sendMessage(
@@ -122,6 +167,23 @@ async function handleAccountLinking(chatId: number, telegramUserId: number, code
       "⚠️ <b>Linking Code Expired</b>\n\nThat linking code has expired (valid for 10 minutes). Please generate a fresh code in Settings."
     );
     return false;
+  }
+
+  if (!account.user_id) {
+    await TelegramBotService.sendMessage(chatId, "⚠️ A database error occurred during linking. User profile not found.");
+    return false;
+  }
+
+  // Delete any stale accounts that already have the same telegram_user_id or chat_id
+  // to prevent unique constraint violations on update.
+  try {
+    await supabaseAdmin
+      .from("telegram_accounts")
+      .delete()
+      .or(`telegram_user_id.eq.${telegramUserId},chat_id.eq.${chatId}`)
+      .neq("id", account.id);
+  } catch (deleteErr) {
+    console.warn("[TelegramWebhook] Stale account deletion error:", deleteErr);
   }
 
   // Update account mapping as linked & active
@@ -141,6 +203,19 @@ async function handleAccountLinking(chatId: number, telegramUserId: number, code
     console.error("[TelegramWebhook] Database linking update failed:", updateError.message);
     await TelegramBotService.sendMessage(chatId, "⚠️ A database error occurred during linking. Please try again.");
     return false;
+  }
+
+  // Insert linking activity log
+  try {
+    await supabaseAdmin.from("activity_logs").insert({
+      user_id: account.user_id,
+      action: "telegram_linked",
+      entity_type: "telegram",
+      entity_id: String(chatId),
+      metadata: { telegram_user_id: telegramUserId, chat_id: chatId }
+    });
+  } catch (logErr) {
+    console.error("[TelegramWebhook] Failed to write linking log:", logErr);
   }
 
   // Send celebration!
@@ -193,8 +268,8 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
         .from("tasks")
         .select("*")
         .eq("user_id", userId)
-        .neq("status", "done")
-        .neq("status", "archived")
+        .neq("status", "done" as "done")
+        .neq("status", "archived" as "archived")
         .order("priority", { ascending: false });
 
       if (!tasks || tasks.length === 0) {
@@ -218,7 +293,7 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
         .from("tasks")
         .select("*")
         .eq("user_id", userId)
-        .neq("status", "done")
+        .neq("status", "done" as "done")
         .order("priority", { ascending: false });
 
       const todayTasks = tasks?.filter(t => t.deadline?.startsWith(todayStr)) || [];
@@ -263,14 +338,16 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
     }
 
     case "/rescue": {
-      const plan = await RescueEngine.assessAndSyncRescuePlan(userId, supabaseAdmin);
+      const plan = await RescueEngine.detectAndRunRescue(userId);
       if (plan && plan.is_active) {
+        const hoursRemaining = plan.hours_remaining ?? 0;
+        const firstStep = plan.emergency_action_plan[0]?.step || "Critical Work Block";
         await TelegramBotService.sendRescueAlert(chatId, {
-          hoursRemaining: (new Date(plan.target_deadline!).getTime() - Date.now()) / (1000 * 60 * 60),
-          recoveryProbability: plan.recovery_probability,
-          nextFocusBlock: plan.focus_sessions[0]?.title || "Critical Work Block",
-          focusSessionsRequired: plan.focus_sessions_required,
-          rescuePlanId: plan.id
+          hoursRemaining,
+          recoveryProbability: plan.recovery_probability ?? 0,
+          nextFocusBlock: firstStep,
+          focusSessionsRequired: plan.remaining_focus_sessions ?? 0,
+          rescuePlanId: userId
         });
       } else {
         await TelegramBotService.sendMessage(chatId, "🟢 <b>Schedule Stable:</b> No deadline emergency detected. Your schedules are perfectly balanced!");
@@ -279,14 +356,18 @@ I am fully synchronized with your Clutch AI platform. You can use these quick co
     }
 
     case "/debrief": {
-      const debrief = await DebriefEngine.generateDailyDebrief(userId, supabaseAdmin);
-      await TelegramBotService.sendDailyDebrief(chatId, {
-        completionRate: debrief.completion_rate,
-        focusMinutes: debrief.focus_minutes,
-        summary: debrief.coaching_summary,
-        priorities: debrief.tomorrow_priorities,
-        streak: debrief.streak_days
-      });
+      const debrief = await DebriefEngine.getOrCreateDailyDebrief(userId);
+      if (debrief) {
+        await TelegramBotService.sendDailyDebrief(chatId, {
+          completionRate: debrief.metrics.completion_rate,
+          focusMinutes: debrief.metrics.focus_time_minutes,
+          summary: debrief.summary,
+          priorities: debrief.tomorrow_priorities,
+          streak: debrief.metrics.current_streak
+        });
+      } else {
+        await TelegramBotService.sendMessage(chatId, "📊 <b>No debrief available yet.</b> Complete some tasks today to generate your daily summary!");
+      }
       return true;
     }
 
@@ -315,7 +396,7 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
   let userContent = message.text || "";
   let filePart: any = null;
 
-  // 1. Handle Voice Messages (Multimodal Speech-to-Text)
+  // 1. Handle Voice Messages (Speech-to-Text)
   if (message.voice) {
     const voiceFile = await TelegramBotService.downloadFile(message.voice.file_id);
     if (voiceFile) {
@@ -329,7 +410,6 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
 
   // 2. Handle Photos
   else if (message.photo && message.photo.length > 0) {
-    // Take largest photo resolution
     const photo = message.photo[message.photo.length - 1];
     const photoFile = await TelegramBotService.downloadFile(photo.file_id);
     if (photoFile) {
@@ -379,90 +459,16 @@ async function handleAIDialogue(chatId: number, userId: string, message: any) {
       convo = newConvo;
     }
 
-    // B. Save User Message to Database
-    const { data: userMsg } = await supabaseAdmin
-      .from("messages")
-      .insert({
-        conversation_id: convo.id,
-        role: "user",
-        content: message.text || (message.voice ? "[Voice Note]" : "[Attachment]"),
-        source: "telegram"
-      })
-      .select()
-      .single();
-
-    // C. Intercept What-If Simulator command in Telegram
-    if (userContent.toLowerCase().includes("what if") || userContent.toLowerCase().includes("what-if")) {
-      const sim = await SimulationEngine.simulateDecision(userId, userContent, supabaseAdmin);
-      const simResponse = `
-🔮 <b>What-If Decision Simulation</b>
-
-🧠 <b>Decision:</b> "${userContent}"
-
-📈 <b>Probability Change:</b> ${sim.original_probability}% ➔ <b>${sim.simulated_probability}%</b>
-⚠️ <b>Risk Level:</b> <b>${sim.deadline_risk.toUpperCase()}</b>
-🔋 <b>Bio-Load Density:</b> <b>${sim.bio_load_density}%</b>
-
-📝 <b>Clutch AI Reasoning:</b>
-<i>${sim.reasoning}</i>
-
-💡 <b>Mitigation Plan:</b>
-${sim.suggested_alternative}
-`;
-      
-      // Save assistant response
-      await supabaseAdmin.from("messages").insert({
-        conversation_id: convo.id,
-        role: "assistant",
-        content: simResponse,
-        source: "telegram"
-      });
-
-      await TelegramBotService.sendMessage(chatId, simResponse);
-      return;
-    }
-
-    // D. Compile Rich Context
-    const context = await ContextBuilder.buildContext(userId);
-
-    // E. Invoke Gemini Model Synchronously
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      systemInstruction: `${AUTONOMOUS_SYSTEM_PROMPT}\n\n[CONTEXT]\n${context}\n\nIMPORTANT: The user is messaging from Telegram. Keep your 'chat_response' extremely clear, formatted in standard HTML tags (<b>, <i>, <code>, <a>), and reasonably concise. Do NOT return markdown format inside 'chat_response'.`,
-      generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
+    // B. Run Unified ActionOrchestrator pipeline
+    const parsedData = await ActionOrchestrator.processMessage(userId, userContent, supabaseAdmin, {
+      fileAttachment: filePart || undefined,
+      source: "telegram",
+      conversationId: convo.id
     });
 
-    const parts: any[] = [];
-    if (filePart) {
-      parts.push({
-        inlineData: {
-          data: filePart.base64Data,
-          mimeType: filePart.mimeType
-        }
-      });
-    }
-    parts.push({ text: userContent });
-
-    const result = await model.generateContent(parts);
-    const responseText = result.response.text();
-
-    // F. Parse AI Structured Response & Run Action Orchestrator
-    const parsedData = JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());
-
-    // Execute database transaction block!
-    await ActionOrchestrator.execute(userId, parsedData, supabaseAdmin, userContent);
-
-    // G. Save Assistant Message & Send Reply to Telegram
     const replyText = parsedData.chat_response;
-    await supabaseAdmin.from("messages").insert({
-      conversation_id: convo.id,
-      role: "assistant",
-      content: replyText,
-      source: "telegram"
-    });
 
-    // If Rescue Mode was triggered during execution, notify!
+    // C. Check if Rescue Mode was triggered during execution, notify!
     const { data: rescuePlan } = await supabaseAdmin
       .from("rescue_plans")
       .select("*")
@@ -470,12 +476,15 @@ ${sim.suggested_alternative}
       .eq("is_active", true)
       .maybeSingle();
 
-    if (rescuePlan && parsedData.chat_response.includes("Rescue Mode")) {
+    if (rescuePlan && (replyText.includes("RESCUE MODE") || replyText.includes("Rescue Mode"))) {
+      const targetDeadline = rescuePlan.estimated_finish_time
+        ? new Date(rescuePlan.estimated_finish_time).getTime()
+        : Date.now() + 60 * 60 * 1000;
       await TelegramBotService.sendRescueAlert(chatId, {
-        hoursRemaining: (new Date(rescuePlan.target_deadline).getTime() - Date.now()) / (1000 * 60 * 60),
-        recoveryProbability: rescuePlan.recovery_probability,
-        nextFocusBlock: rescuePlan.focus_sessions[0]?.title || "Focus Mission",
-        focusSessionsRequired: rescuePlan.focus_sessions_required,
+        hoursRemaining: (targetDeadline - Date.now()) / (1000 * 60 * 60),
+        recoveryProbability: rescuePlan.recovery_probability ?? 0,
+        nextFocusBlock: "Focus Mission",
+        focusSessionsRequired: rescuePlan.remaining_focus_sessions ?? 0,
         rescuePlanId: rescuePlan.id
       });
     } else {
@@ -484,7 +493,7 @@ ${sim.suggested_alternative}
 
   } catch (err: any) {
     console.error("[TelegramWebhook] AI processing error:", err);
-    await TelegramBotService.sendMessage(chatId, `⚠️ <b>Transaction Aborted</b>\n\nI encountered a database or AI core synchronization issue. Your schedules have been safely rolled back. Please try again!`);
+    await TelegramBotService.sendMessage(chatId, `⚠️ <b>Transaction Aborted</b>\n\nI encountered a database or AI core synchronization issue: ${err.message || "Execution error"}. Your schedules have been safely rolled back. Please try again!`);
   }
 }
 
@@ -511,6 +520,8 @@ async function handleCallbackQuery(callbackQuery: any) {
   }
 
   const userId = account.user_id;
+  if (!userId) return;
+
   const parts = data.split(":");
   const actionScope = parts[0]; // 'task' or 'rescue'
   const actionName = parts[1]; // 'complete', 'postpone', 'focus', etc.
@@ -522,7 +533,7 @@ async function handleCallbackQuery(callbackQuery: any) {
         // Mark task as done
         const { error } = await supabaseAdmin
           .from("tasks")
-          .update({ status: "done", completion_percentage: 100 })
+          .update({ status: "done" as const, completion_percentage: 100 })
           .eq("id", targetId)
           .eq("user_id", userId);
 
@@ -537,7 +548,7 @@ async function handleCallbackQuery(callbackQuery: any) {
         });
 
         // Assess and update rescue plan if active
-        await RescueEngine.assessAndSyncRescuePlan(userId, supabaseAdmin);
+        await RescueEngine.updateRescueProgress(userId);
 
         await TelegramBotService.answerCallbackQuery(callbackQuery.id, "Task completed successfully!");
         await TelegramBotService.editMessageText(chatId, messageId, `✅ <b>Task Completed</b>\n\nYou marked this focus task as finished. Outstanding work!`);
@@ -570,6 +581,34 @@ async function handleCallbackQuery(callbackQuery: any) {
         // Start Focus session
         await TelegramBotService.answerCallbackQuery(callbackQuery.id, "Focus session started!");
         await TelegramBotService.sendMessage(chatId, "🚀 <b>Focus Session Started!</b>\n\nYour Pomodoro timer has begun. Take 25 minutes of deep focus. You can do this!");
+      }
+    }
+
+    else if (actionScope === "reminder") {
+      const { ReminderService } = await import("@/lib/ai/reminder-service");
+      const result = await ReminderService.handleReminderAction(userId, actionName, targetId, supabaseAdmin);
+      
+      if (result.success) {
+        await TelegramBotService.answerCallbackQuery(callbackQuery.id, result.message);
+        
+        let displayState = `🔔 <b>Reminder Action Processed</b>\n\n`;
+        if (actionName === "complete" || actionName === "started") {
+          displayState += `✅ Marked as completed. Excellent work!`;
+        } else if (actionName === "snooze") {
+          displayState += `⏰ Snoozed for 10 minutes.`;
+        } else if (actionName === "busy") {
+          displayState += `🤕 Rescheduled for 30 minutes later.`;
+        } else if (actionName === "later" || actionName === "followup_busy") {
+          displayState += `⏰ Postponed by 1 hour.`;
+        } else if (actionName === "skip") {
+          displayState += `❌ Reminder skipped.`;
+        } else if (actionName === "help") {
+          displayState += `🤝 AI Coaching triggered. Check below for assistance!`;
+        }
+        
+        await TelegramBotService.editMessageText(chatId, messageId, displayState);
+      } else {
+        await TelegramBotService.answerCallbackQuery(callbackQuery.id, result.message, true);
       }
     }
 

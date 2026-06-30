@@ -1,19 +1,28 @@
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient } from "./providers";
+import type { Json } from "@/types/database.types";
 import { ContextBuilder } from "./context-builder";
 import type { Task } from "@/types/app.types";
 
-export interface TimeBlock {
+export type TimeBlock = {
   time: string; // e.g. "09:00 - 10:30"
   task_title: string;
   duration_minutes: number;
-}
+};
 
-export interface NextBestAction {
+export type NextBestAction = {
   title: string;
   estimated_time: number;
   reason: string;
-}
+};
+
+export type ExecutionPlanData = {
+  today: string[];
+  tomorrow: string[];
+  weekly: string[];
+  estimated_finish_time?: string | null;
+  recommended_work_blocks?: string | null;
+};
 
 export class PlannerService {
   /**
@@ -69,16 +78,7 @@ export class PlannerService {
    * Uses Gemini to perform Adaptive Rescheduling and Hour-Blocked Time Slot planning.
    * Triggered when tasks are overdue or skipped.
    */
-  static async regenerateTimeBlockPlan(userId: string): Promise<any> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      generationConfig: { responseMimeType: "application/json" },
-    });
-
+  static async regenerateTimeBlockPlan(userId: string): Promise<ExecutionPlanData | null> {
     // 1. Build rich context containing memories, current plan, and tasks
     const context = await ContextBuilder.buildContext(userId, "regenerate my schedule, reschedule overdue items");
 
@@ -116,15 +116,24 @@ Some tasks might be overdue or skipped.
 Optimize my workload and map out specific hour-blocked time blocks for today and tomorrow.
 `;
 
-    const result = await model.generateContent([systemInstruction, prompt]);
-    const text = result.response.text();
+    const text = await AIClient.generateText(
+      [
+        { role: "user" as const, content: prompt }
+      ],
+      {
+        provider: "gemini",
+        model: "gemini-1.5-flash",
+        systemPrompt: systemInstruction,
+        responseMimeType: "application/json"
+      }
+    );
 
     try {
-      const planData = JSON.parse(text);
+      const planData: ExecutionPlanData = JSON.parse(text);
       
       // Save plan back to Supabase
       const supabase = await createClient();
-      await supabase.from("execution_plans").upsert(
+      const { error: upsertError } = await supabase.from("execution_plans").upsert(
         {
           user_id: userId,
           plan_type: "daily",
@@ -132,20 +141,26 @@ Optimize my workload and map out specific hour-blocked time blocks for today and
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id, plan_type" }
-      ).catch(() => {
+      );
+
+      if (upsertError) {
+        console.warn("[PlannerService] Upsert failed, running fallback delete & insert:", upsertError.message);
         // Fallback delete/insert
-        supabase
+        await supabase
           .from("execution_plans")
           .delete()
-          .match({ user_id: userId, plan_type: "daily" })
-          .then(() => {
-            supabase.from("execution_plans").insert({
-              user_id: userId,
-              plan_type: "daily",
-              plan_data: planData,
-            });
-          });
-      });
+          .match({ user_id: userId, plan_type: "daily" });
+
+        const { error: insertError } = await supabase.from("execution_plans").insert({
+          user_id: userId,
+          plan_type: "daily",
+          plan_data: planData,
+        });
+
+        if (insertError) {
+          console.error("[PlannerService] Fallback insert failed:", insertError.message);
+        }
+      }
 
       return planData;
     } catch (err) {

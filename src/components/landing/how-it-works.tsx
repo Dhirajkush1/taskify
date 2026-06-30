@@ -7,7 +7,7 @@ const STEPS = [
   {
     number: "01",
     icon: MessageSquare,
-    title: "Tell Clutch What's On Your Mind",
+    title: "Tell Taskify What's On Your Mind",
     description:
       'Speak or type naturally. "I have an exam Friday, a report due Monday, and a meeting tomorrow at 3pm." That\'s it.',
     color: "oklch(0.65 0.22 280)",
@@ -25,7 +25,7 @@ const STEPS = [
     icon: ListChecks,
     title: "Get Your Mission Plan",
     description:
-      "Clutch builds your prioritized mission list, flags high-risk deadlines, and shows you exactly what to tackle first.",
+      "Taskify builds your prioritized mission list, flags high-risk deadlines, and shows you exactly what to tackle first.",
     color: "oklch(0.75 0.18 60)",
   },
   {
@@ -33,7 +33,7 @@ const STEPS = [
     icon: Trophy,
     title: "Execute & Win",
     description:
-      "Work through your missions with AI guidance. Clutch tracks progress, adjusts priorities, and celebrates every completion.",
+      "Work through your missions with AI guidance. Taskify tracks progress, adjusts priorities, and celebrates every completion.",
     color: "oklch(0.70 0.18 152)",
   },
 ];

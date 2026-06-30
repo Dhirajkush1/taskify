@@ -1,5 +1,6 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
+import { AIClient } from "@/lib/ai/providers";
 
 export interface SimulationResult {
   current_completion_probability: number;
@@ -15,11 +16,6 @@ export interface SimulationResult {
 }
 
 export class SimulationEngine {
-  private static getGenAI() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return null;
-    return new GoogleGenerativeAI(apiKey);
-  }
 
   /**
    * Simulates the impact of a hypothetical action (e.g. postponing a task, skipping study, canceling a meeting)
@@ -45,15 +41,7 @@ export class SimulationEngine {
     const pendingTasks = tasks || [];
     const historyLogs = history || [];
 
-    const genAI = this.getGenAI();
-    if (!genAI) {
-      console.warn("Gemini API key missing for SimulationEngine.");
-      return null;
-    }
-
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
       const context = {
         pendingTasks: pendingTasks.map((t) => ({
           title: t.title,
@@ -96,15 +84,24 @@ Respond ONLY with a valid JSON object matching this schema:
 
 Do not wrap in markdown or include extra conversational text. Return raw JSON.`;
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          responseMimeType: "application/json"
+        }
+      );
+      const cleaned = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const parsed = JSON.parse(cleaned);
 
       // Log event in activity logs
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "SimulationRequested",
+        action: "SimulationRequested",
+        entity_type: "system",
         metadata: {
           scenario: scenarioPrompt,
           impact: parsed.workload_impact,

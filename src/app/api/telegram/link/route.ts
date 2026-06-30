@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { TelegramBotService } from "@/lib/telegram/bot-service";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,57 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // --- SELF-HEALING DATABASE BLOCK ---
+    // Check if the user profile exists in public.users. If it's missing, insert it.
+    // This prevents foreign key violations (telegram_accounts_user_id_fkey) for new users.
+    const { data: publicUser, error: checkError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!publicUser) {
+      console.log(`[Self-Healing] Public profile missing in public.users for ID ${user.id} in Telegram linking. Creating...`);
+      const { error: insertUserError } = await supabase
+        .from("users")
+        .insert({
+          id: user.id,
+          email: user.email || "",
+          full_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
+          avatar_url: user.user_metadata?.avatar_url || null,
+        });
+
+      if (insertUserError) {
+        console.error("[Self-Healing] Failed to create public user profile:", insertUserError.message);
+      } else {
+        console.log("[Self-Healing] Public user profile self-healed successfully!");
+        // Also ensure settings record exists for the new user profile
+        await supabase.from("settings").insert({ user_id: user.id });
+      }
+    }
+    // -----------------------------------
+
+    // --- WEBHOOK AUTO-REGISTRATION ---
+    // Check and register the Telegram webhook url with Telegram Bot API if configured
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+        const webhookUrl = `${appUrl}/api/telegram/webhook`;
+        console.log(`[TelegramLink] Checking webhook registration state: ${webhookUrl}`);
+        const info = await TelegramBotService.getWebhookInfo();
+        if (!info || info.url !== webhookUrl) {
+          console.log(`[TelegramLink] Webhook url mismatch (current: ${info?.url || "none"}). Updating to: ${webhookUrl}`);
+          const success = await TelegramBotService.setWebhook(webhookUrl);
+          console.log(`[TelegramLink] Webhook set success: ${success}`);
+        } else {
+          console.log(`[TelegramLink] Webhook is already correctly registered at: ${webhookUrl}`);
+        }
+      } catch (err) {
+        console.error("[TelegramLink] Webhook registration logic failed:", err);
+      }
+    }
+    // ---------------------------------
 
     // Fetch telegram account mapping
     const { data: account, error: accountError } = await supabase
@@ -58,7 +110,7 @@ export async function GET(request: NextRequest) {
           connected: false,
           linkingCode: account.linking_code,
           expiresAt: account.linking_code_expires_at,
-          botUsername: process.env.TELEGRAM_BOT_USERNAME || "ClutchAIBot"
+          botUsername: process.env.TELEGRAM_BOT_USERNAME || "TaskifyAI_bot"
         });
       }
     }
@@ -88,7 +140,7 @@ export async function GET(request: NextRequest) {
       connected: false,
       linkingCode: code,
       expiresAt: expiresAt,
-      botUsername: process.env.TELEGRAM_BOT_USERNAME || "ClutchAIBot"
+      botUsername: process.env.TELEGRAM_BOT_USERNAME || "TaskifyAI_bot"
     });
   } catch (err: any) {
     console.error("[TelegramLinkRoute] Critical error in GET:", err);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain,
@@ -30,6 +30,7 @@ import { CustomCharts } from "./custom-charts";
 import { triggerConfetti } from "@/components/shared/confetti-canvas";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import type { Task } from "@/types/app.types";
 import type { DashboardData } from "@/lib/ai/dashboard-service";
 
@@ -106,6 +107,72 @@ export function AutonomousWidgets({
   // Rescue Mode State
   const [isDeactivatingRescue, setIsDeactivatingRescue] = useState(false);
 
+  // Habits Engine State
+  const [habits, setHabits] = useState<any[]>([]);
+  const [isCompletingHabit, setIsCompletingHabit] = useState<Record<string, boolean>>({});
+
+  const loadHabits = useCallback(async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase
+        .from("habits")
+        .select("*")
+        .order("created_at", { ascending: false });
+      setHabits(data || []);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHabits();
+  }, [loadHabits]);
+
+  const handleCompleteHabit = async (habitId: string, currentStreak: number, lastCompletedAt: string | null) => {
+    setIsCompletingHabit(prev => ({ ...prev, [habitId]: true }));
+    try {
+      const supabase = createClient();
+      const now = new Date();
+      let newStreak = currentStreak;
+
+      if (lastCompletedAt) {
+        const lastDate = new Date(lastCompletedAt);
+        const diffTime = Math.abs(now.getTime() - lastDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays <= 1) {
+          if (lastDate.toDateString() !== now.toDateString()) {
+            newStreak = currentStreak + 1;
+          }
+        } else {
+          newStreak = 1;
+        }
+      } else {
+        newStreak = 1;
+      }
+
+      const { error } = await supabase
+        .from("habits")
+        .update({
+          streak: newStreak,
+          last_completed_at: now.toISOString(),
+          updated_at: now.toISOString()
+        })
+        .eq("id", habitId);
+
+      if (!error) {
+        triggerConfetti();
+        toast.success("Habit checked off! Keep the streak alive!");
+        loadHabits();
+      } else {
+        toast.error("Failed to update habit.");
+      }
+    } catch (err) {
+      toast.error("Error updating habit.");
+    } finally {
+      setIsCompletingHabit(prev => ({ ...prev, [habitId]: false }));
+    }
+  };
+
   const {
     stats,
     nextBestAction,
@@ -121,12 +188,7 @@ export function AutonomousWidgets({
 
   const pendingTasks = tasks.filter((t) => t.status !== "done");
 
-  // Load debrief on tab switch or mount
-  useEffect(() => {
-    fetchDebriefData();
-  }, [debriefTab]);
-
-  const fetchDebriefData = async (forceGenerate = false) => {
+  const fetchDebriefData = useCallback(async (forceGenerate = false) => {
     setIsLoadingDebrief(true);
     try {
       if (debriefTab === "daily") {
@@ -158,7 +220,12 @@ export function AutonomousWidgets({
     } finally {
       setIsLoadingDebrief(false);
     }
-  };
+  }, [debriefTab]);
+
+  // Load debrief on tab switch or mount
+  useEffect(() => {
+    fetchDebriefData();
+  }, [fetchDebriefData]);
 
   const handleSimulate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -389,7 +456,7 @@ export function AutonomousWidgets({
           <h3 className="text-sm font-extrabold text-neutral-100 leading-relaxed">
             {pendingTasks.length > 0
               ? `You have ${pendingTasks.length} missions active. Your workload is ${workloadStatus.toLowerCase()} with a ${completionProbability.average}% average completion probability.`
-              : "All clear! You have no active missions. Draft a new milestone in Mission Control to unlock your productivity roadmap!"}
+              : "All clear! You have no active missions. Draft a new milestone in Taskify Buddy to unlock your productivity roadmap!"}
           </h3>
           <p className="text-xs text-neutral-400 leading-relaxed">
             <strong>Prediction:</strong> {completionProbability.predictionText}
@@ -474,13 +541,13 @@ export function AutonomousWidgets({
                     <div className="md:col-span-2 space-y-3">
                       <div className="bg-white/5 p-4 rounded-xl border border-neutral-900">
                         <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest block mb-1">Clutch Companion Executive Summary</span>
-                        <p className="text-xs text-neutral-200 leading-relaxed font-medium">"{dailyDebrief.summary}"</p>
+                        <p className="text-xs text-neutral-200 leading-relaxed font-medium">&quot;{dailyDebrief.summary}&quot;</p>
                       </div>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {dailyDebrief.tomorrow_priorities && dailyDebrief.tomorrow_priorities.length > 0 && (
                           <div className="bg-neutral-950/40 p-3.5 rounded-xl border border-neutral-900">
-                            <span className="text-[9px] font-black text-neutral-500 uppercase block mb-2">Tomorrow's Priorities</span>
+                            <span className="text-[9px] font-black text-neutral-500 uppercase block mb-2">Tomorrow&apos;s Priorities</span>
                             <ul className="space-y-1.5">
                               {dailyDebrief.tomorrow_priorities.map((item, idx) => (
                                 <li key={idx} className="text-xs text-neutral-300 flex items-center gap-2">
@@ -533,7 +600,7 @@ export function AutonomousWidgets({
                       </div>
 
                       <div className="border-t border-neutral-900 pt-3">
-                        <span className="text-[9px] font-black text-neutral-500 uppercase block mb-1">Tomorrow's Prediction</span>
+                        <span className="text-[9px] font-black text-neutral-500 uppercase block mb-1">Tomorrow&apos;s Prediction</span>
                         <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
                           <TrendingUp className="w-4 h-4" /> {dailyDebrief.tomorrow_probability}% Success Probability
                         </span>
@@ -612,7 +679,7 @@ export function AutonomousWidgets({
 
                       <div className="border-t border-neutral-900 pt-3">
                         <span className="text-[9px] font-black text-neutral-500 uppercase block mb-1">AI Coaching Strategy</span>
-                        <p className="text-[11px] text-neutral-300 leading-relaxed italic">"{weeklyReflection.coaching_advice}"</p>
+                        <p className="text-[11px] text-neutral-300 leading-relaxed italic">&quot;{weeklyReflection.coaching_advice}&quot;</p>
                       </div>
                     </div>
                   </div>
@@ -693,7 +760,7 @@ export function AutonomousWidgets({
               </div>
             ) : (
               <p className="text-xs italic text-neutral-500 leading-relaxed">
-                No active tasks! All missions completed. Type in Mission Control to declare your next strategic goals.
+                No active tasks! All missions completed. Type in Taskify Buddy to declare your next strategic goals.
               </p>
             )}
           </div>
@@ -787,7 +854,7 @@ export function AutonomousWidgets({
                   <div className="space-y-1">
                     <span className="text-[9px] text-violet-400 font-bold block uppercase">AI Simulator Reasoning</span>
                     <p className="text-[11px] text-neutral-300 leading-relaxed font-medium">
-                      "{simulationResult.reasoning}"
+                      &quot;{simulationResult.reasoning}&quot;
                     </p>
                   </div>
 
@@ -952,7 +1019,7 @@ export function AutonomousWidgets({
               </ul>
             ) : (
               <p className="text-xs italic text-neutral-500 leading-relaxed">
-                Ask Clutch in Mission Control to draft your hour-blocked schedule!
+                Ask Clutch in Taskify Buddy to draft your hour-blocked schedule!
               </p>
             )}
           </div>
@@ -1057,6 +1124,81 @@ export function AutonomousWidgets({
             </div>
           </div>
 
+          {/* AI Habits Tracker & Consistency Streaks */}
+          <div
+            className="rounded-2xl p-5 border flex flex-col gap-4"
+            style={{
+              background: "var(--surface)",
+              borderColor: "var(--border)",
+              boxShadow: "var(--shadow-sm)",
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4.5 h-4.5 text-orange-500 fill-orange-500" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                  AI Habit Streaks
+                </h3>
+              </div>
+              <span className="text-[10px] text-neutral-500 font-bold">{habits.length} Habits</span>
+            </div>
+
+            {habits.length > 0 ? (
+              <div className="flex flex-col gap-2.5 max-h-[220px] overflow-y-auto pr-1">
+                {habits.map((habit) => {
+                  const isChecked = habit.last_completed_at 
+                    ? new Date(habit.last_completed_at).toDateString() === new Date().toDateString() 
+                    : false;
+                  
+                  return (
+                    <div 
+                      key={habit.id}
+                      className="p-3 rounded-xl border border-neutral-900 bg-neutral-950 flex items-center justify-between gap-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-xs font-bold text-neutral-200 block truncate ${isChecked ? "line-through opacity-50" : ""}`}>
+                          {habit.title}
+                        </span>
+                        <span className="text-[10px] text-neutral-500 uppercase font-black tracking-wider block mt-0.5">
+                          {habit.frequency}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-1 bg-orange-500/5 border border-orange-500/10 px-2 py-0.5 rounded-full">
+                          <Flame className="w-3 h-3 text-orange-500 fill-orange-500" />
+                          <span className="text-[10px] font-black text-orange-400">
+                            {habit.streak}
+                          </span>
+                        </div>
+                        
+                        <button
+                          onClick={() => handleCompleteHabit(habit.id, habit.streak, habit.last_completed_at)}
+                          disabled={isChecked || isCompletingHabit[habit.id]}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center border transition-all ${
+                            isChecked
+                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                              : "bg-white/5 border-white/10 text-neutral-400 hover:text-orange-400 hover:bg-orange-500/10 hover:border-orange-500/20 cursor-pointer"
+                          }`}
+                        >
+                          {isCompletingHabit[habit.id] ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            "✓"
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs italic text-neutral-500 leading-relaxed">
+                No habits established yet. Ask Clutch AI in Taskify Buddy to set up habit tracking for you!
+              </p>
+            )}
+          </div>
+
           {/* AI Coach Card & Micro-tasks Checklist */}
           <div
             className="rounded-2xl p-5 border flex flex-col gap-4"
@@ -1074,12 +1216,12 @@ export function AutonomousWidgets({
             </div>
 
             <p className="text-xs text-neutral-300 leading-relaxed italic">
-              "{burnoutScore.advice}"
+              &quot;{burnoutScore.advice}&quot;
             </p>
 
             <div className="border-t pt-3 space-y-2.5" style={{ borderColor: "var(--border)" }}>
               <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest block">
-                Today's Micro-Wins Checklist
+                Today&apos;s Micro-Wins Checklist
               </span>
               
               <ul className="flex flex-col gap-2">

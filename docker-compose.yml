@@ -1,0 +1,62 @@
+# ============================================================
+# Taskify / Clutch AI — Docker Compose
+# M1/M2 Mac compatible — forces linux/amd64 to match Cloud Run
+# ============================================================
+
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # M1/M2 Mac: force amd64 so local test matches Cloud Run's x86 servers
+      platforms:
+        - linux/amd64
+      args:
+        # NEXT_PUBLIC_* vars are baked into the JS bundle at build time.
+        # These MUST be set here (or as environment variables before running).
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+
+    # M1/M2 Mac: explicitly run the container as amd64
+    platform: linux/amd64
+
+    container_name: clutch-ai
+
+    ports:
+      - "3000:3000"
+
+    # Runtime secrets — passed as env vars, never baked into the image.
+    environment:
+      NODE_ENV: production
+
+      # Supabase
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+
+      # Gemini AI
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+
+      # App URL
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+
+      # Google OAuth & Calendar
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      GOOGLE_OAUTH_ENCRYPTION_KEY: ${GOOGLE_OAUTH_ENCRYPTION_KEY}
+
+      # Telegram Bot
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

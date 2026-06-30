@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 import { SupabaseProvider } from "@/providers/supabase-provider";
@@ -7,29 +6,23 @@ import { RealtimeSyncProvider } from "@/providers/realtime-sync-provider";
 import { Toaster } from "sonner";
 import { ConfettiCanvas } from "@/components/shared/confetti-canvas";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
 export const metadata: Metadata = {
   title: {
-    default: "Clutch AI — Beat Every Deadline",
-    template: "%s | Clutch AI",
+    default: "Taskify AI — Beat Every Deadline",
+    template: "%s | Taskify AI",
   },
   description:
-    "Clutch AI is your AI productivity companion that helps you actually complete work before deadlines. Just talk naturally — Clutch extracts tasks, sets priorities, and keeps you ahead.",
-  keywords: ["AI productivity", "task management", "deadline tracker", "AI assistant", "mission control"],
-  authors: [{ name: "Clutch AI" }],
+    "Taskify AI is your AI productivity companion that helps you actually complete work before deadlines. Just talk naturally — Taskify extracts tasks, sets priorities, and keeps you ahead.",
+  keywords: ["AI productivity", "task management", "deadline tracker", "AI assistant", "taskify buddy"],
+  authors: [{ name: "Taskify AI" }],
   openGraph: {
-    title: "Clutch AI — Beat Every Deadline",
+    title: "Taskify AI — Beat Every Deadline",
     description: "Your AI productivity companion. Talk naturally, get things done.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clutch AI",
+    title: "Taskify AI",
     description: "Your AI productivity companion.",
   },
 };
@@ -40,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="icon" href="/favicon.ico" />

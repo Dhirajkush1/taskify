@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIClient } from "./providers";
 
 export interface AIGeneratedTask {
   title: string;
@@ -20,18 +20,7 @@ export class GoalService {
     milestoneTitle: string,
     milestoneDescription?: string
   ): Promise<AIGeneratedTask[]> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("[GoalService] Missing GEMINI_API_KEY. Skipping task autogeneration.");
-      return [];
-    }
-
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json" },
-      });
 
       const systemInstruction = `
 You are Clutch AI's Goal Decomposer. Your task is to break down a high-level milestone into 3 to 5 highly actionable, granular, and specific tasks.
@@ -58,8 +47,18 @@ Milestone Description: "${milestoneDescription || ""}"
 Decompose this milestone into 3-5 clear tasks.
 `;
 
-      const result = await model.generateContent([systemInstruction, prompt]);
-      const tasks: AIGeneratedTask[] = JSON.parse(result.response.text());
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          systemPrompt: systemInstruction,
+          responseMimeType: "application/json"
+        }
+      );
+      const tasks: AIGeneratedTask[] = JSON.parse(responseText.trim().replace(/```json/gi, "").replace(/```/gi, "").trim());
 
       if (tasks && tasks.length > 0) {
         const supabase = await createClient();
@@ -70,18 +69,34 @@ Decompose this milestone into 3-5 clear tasks.
           milestone_id: milestoneId,
           title: t.title,
           description: t.description || null,
-          priority: t.priority || "medium",
-          status: "todo",
+          priority: (t.priority || "medium") as "critical" | "high" | "medium" | "low",
+          status: "todo" as const,
           estimated_duration: t.estimated_duration || 45,
           completion_percentage: 0,
           priority_score: t.priority === "critical" ? 90 : t.priority === "high" ? 75 : 50,
-          risk_level: "low",
+          risk_level: "low" as const,
           completion_probability: 95
         }));
 
-        const { error } = await supabase.from("tasks").insert(taskPayloads);
-        if (error) {
-          console.error("[GoalService] Error inserting generated tasks:", error.message);
+        for (const payload of taskPayloads) {
+          const { data: existing } = await supabase
+            .from("tasks")
+            .select("id")
+            .eq("user_id", userId)
+            .ilike("title", payload.title.trim())
+            .eq("status", "todo")
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            await supabase
+              .from("tasks")
+              .update(payload as any)
+              .eq("id", existing[0].id);
+          } else {
+            await supabase
+              .from("tasks")
+              .insert(payload as any);
+          }
         }
       }
 

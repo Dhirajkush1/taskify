@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+
 
 export interface TelegramKeyboardBtn {
   text: string;
@@ -316,5 +316,60 @@ ${winsList || "• Consistent effort across focus blocks."}
 `;
 
     return this.sendMessage(chatId, text);
+  }
+
+  /**
+   * Fetch webhook registration information from Telegram API.
+   */
+  static async getWebhookInfo(): Promise<{ url: string; pending_update_count: number } | null> {
+    if (!this.token) return null;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/getWebhookInfo`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.result || null;
+    } catch (err) {
+      console.error("[TelegramBotService] Error getting webhook info:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Register a webhook URL for the Telegram bot.
+   */
+  static async setWebhook(url: string): Promise<boolean> {
+    if (!this.token) return false;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/setWebhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[TelegramBotService] setWebhook failed: ${response.status} - ${errorText}`);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error("[TelegramBotService] Error setting webhook:", err);
+      return false;
+    }
+  }
+
+  /**
+   * Fetch bot info (to verify credentials and get correct bot username).
+   */
+  static async getMe(): Promise<{ username: string } | null> {
+    if (!this.token) return null;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/getMe`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.result || null;
+    } catch (err) {
+      console.error("[TelegramBotService] Error in getMe:", err);
+      return null;
+    }
   }
 }

@@ -6,7 +6,7 @@ import { Star } from "lucide-react";
 const TESTIMONIALS = [
   {
     quote:
-      "I used to miss deadlines constantly. Since using Clutch AI, I've completed every project on time for 3 months straight. The natural language input is a game changer.",
+      "I used to miss deadlines constantly. Since using Taskify AI, I've completed every project on time for 3 months straight. The natural language input is a game changer.",
     name: "Aisha Patel",
     role: "Product Manager @ Stripe",
     initials: "AP",
@@ -22,7 +22,7 @@ const TESTIMONIALS = [
   },
   {
     quote:
-      "The risk level intelligence is what sold me. Clutch flags tasks I didn't even know were urgent. I haven't had a late submission since.",
+      "The risk level intelligence is what sold me. Taskify flags tasks I didn't even know were urgent. I haven't had a late submission since.",
     name: "Sofia Rodriguez",
     role: "PhD Student, Stanford",
     initials: "SR",
@@ -30,7 +30,7 @@ const TESTIMONIALS = [
   },
   {
     quote:
-      "Incredibly intuitive. I was managing 12 client projects simultaneously and Clutch kept me sane. The mission control chat is like having a co-pilot.",
+      "Incredibly intuitive. I was managing 12 client projects simultaneously and Taskify kept me sane. The Taskify Buddy chat is like having a co-pilot.",
     name: "Jake Thompson",
     role: "Startup Founder",
     initials: "JT",
@@ -38,7 +38,7 @@ const TESTIMONIALS = [
   },
   {
     quote:
-      "As an intern with 5 tasks from 3 different managers, I was overwhelmed. Clutch turned all my scattered notes into a clear action plan every morning.",
+      "As an intern with 5 tasks from 3 different managers, I was overwhelmed. Taskify turned all my scattered notes into a clear action plan every morning.",
     name: "Yuki Tanaka",
     role: "Software Engineering Intern",
     initials: "YT",

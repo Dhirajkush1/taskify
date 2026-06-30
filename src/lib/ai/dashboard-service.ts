@@ -56,7 +56,9 @@ export class DashboardService {
 
     // Fetch all required tables in parallel
     const [
-      tasksRes,
+      personalTasksRes,
+      projectTasksRes,
+      goalTasksRes,
       planRes,
       scoreRes,
       historyRes,
@@ -64,13 +66,24 @@ export class DashboardService {
       activityRes,
       rescueRes
     ] = await Promise.all([
-      // 1. All active (non-archived) tasks
+      // 1. Personal / General tasks
       supabase
         .from("tasks")
         .select("*")
         .eq("user_id", userId)
-        .neq("status", "archived")
-        .order("deadline", { ascending: true, nullsFirst: false }),
+        .neq("status", "archived"),
+      // 1b. Project tasks
+      supabase
+        .from("project_tasks")
+        .select("*")
+        .eq("user_id", userId)
+        .neq("status", "done"),
+      // 1c. Goal tasks
+      supabase
+        .from("goal_tasks")
+        .select("*")
+        .eq("user_id", userId)
+        .neq("status", "done"),
       // 2. Today's execution plan
       supabase
         .from("execution_plans")
@@ -116,7 +129,16 @@ export class DashboardService {
         .maybeSingle()
     ]);
 
-    const tasks: Task[] = tasksRes.data ?? [];
+    const tasks: Task[] = [
+      ...(personalTasksRes.data || []),
+      ...(projectTasksRes.data || []).map((t: any) => ({ ...t, deadline: t.due_date })),
+      ...(goalTasksRes.data || [])
+    ].sort((a, b) => {
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    }) as any;
+
     const planData = planRes.data?.plan_data ?? null;
     const scoreRow = scoreRes.data ?? null;
     const history = historyRes.data ?? [];
@@ -131,7 +153,7 @@ export class DashboardService {
     // 1. KPI Calculations (Total, Done, Progress, Due Week)
     // ==========================================
     const totalTasks = tasks.length;
-    
+
     // Completed today check
     const completedToday = tasks.filter((t) => {
       if (t.status !== "done" || !t.updated_at) return false;
@@ -152,7 +174,7 @@ export class DashboardService {
       completedToday,
       inProgress,
       upcomingDeadlines: dueThisWeek,
-      streak: scoreRow?.details?.streak || 0
+      streak: ((scoreRow?.details as { streak?: number } | null)?.streak) || 0
     };
 
     // ==========================================
@@ -177,7 +199,7 @@ export class DashboardService {
       return !hasActiveBlockingDeps;
     }) || sortedPending[0] || null;
 
-    let nbaReason = "Add your first task in Mission Control to get started!";
+    let nbaReason = "Add your first task in Taskify Buddy to get started!";
     if (nextBestTask) {
       const deps = (nextBestTask.dependencies as string[]) || [];
       if (deps.length > 0) {
@@ -199,7 +221,9 @@ export class DashboardService {
     // ==========================================
     // 4. Execution Timeline
     // ==========================================
-    const executionTimeline = (planData?.today as string[]) || [];
+    //const executionTimeline = (planData?.today as string[]) || [];
+    const executionTimeline = ((planData as { today?: string[] } | null)?.today as string[]) || [];
+
 
     // ==========================================
     // 5. Upcoming Deadlines (Nearest Deadlines First)
@@ -234,7 +258,9 @@ export class DashboardService {
     // 7. Productivity Score
     // ==========================================
     let score = 85; // Fallback default
-    let streak = scoreRow?.details?.streak || 0;
+    // let streak = scoreRow?.details?.streak || 0;
+    let streak = (scoreRow?.details as { streak?: number } | null)?.streak || 0;
+
 
     if (scoreRow) {
       score = scoreRow.score;
@@ -243,7 +269,7 @@ export class DashboardService {
       const completionRate = completedTasks.length / tasks.length;
       const overdueCount = pendingTasks.filter((t) => t.deadline && new Date(t.deadline).getTime() < Date.now()).length;
       const focusTime = focusSessions.reduce((acc, f) => acc + (f.completed_minutes || 0), 0);
-      
+
       const rawScore = (completionRate * 60) + (focusTime > 0 ? 20 : 0) - (overdueCount * 10);
       score = Math.min(100, Math.max(20, Math.round(rawScore + 20)));
     }
@@ -327,7 +353,7 @@ export class DashboardService {
 
     if (history.length >= 2) {
       const daysShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      
+
       // Map completion trend
       history.slice(-7).forEach((h) => {
         const d = new Date(h.recorded_date);

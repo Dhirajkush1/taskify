@@ -15,6 +15,10 @@ import {
   ChevronRight,
   Sparkles,
   LogOut,
+  Target,
+  FolderKanban,
+  Inbox,
+  Bell
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -23,9 +27,13 @@ import { toast } from "sonner";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Mission Control", href: "/mission-control", icon: Zap },
-  { label: "Tasks", href: "/tasks", icon: CheckSquare },
+  { label: "Daily Planner", href: "/tasks", icon: CheckSquare },
+  { label: "Goals", href: "/goals", icon: Target },
+  { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Calendar", href: "/calendar", icon: Calendar },
+  { label: "Inbox", href: "/inbox", icon: Inbox },
+  { label: "Reminder Center", href: "/reminders", icon: Bell },
+  { label: "Taskify Buddy", href: "/taskify-buddy", icon: Zap },
 ] as const;
 
 const BOTTOM_ITEMS = [
@@ -86,7 +94,7 @@ export function Sidebar({ user }: SidebarProps) {
                   className="font-bold text-base tracking-tight whitespace-nowrap"
                   style={{ color: "var(--text-primary)" }}
                 >
-                  Clutch AI
+                  Taskify AI
                 </motion.span>
               )}
             </AnimatePresence>

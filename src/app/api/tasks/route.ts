@@ -1,5 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import type { TaskStatus, TaskPriority } from "@/types/app.types";
+
+const VALID_STATUSES: TaskStatus[] = ["todo", "in_progress", "done", "archived"];
+const VALID_PRIORITIES: TaskPriority[] = ["critical", "high", "medium", "low"];
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -12,12 +16,19 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const status = searchParams.get("status");
-  const priority = searchParams.get("priority");
+  const rawStatus = searchParams.get("status");
+  const rawPriority = searchParams.get("priority");
   const search = searchParams.get("search");
   const page = parseInt(searchParams.get("page") ?? "1");
   const pageSize = parseInt(searchParams.get("pageSize") ?? "20");
   const offset = (page - 1) * pageSize;
+
+  const status = VALID_STATUSES.includes(rawStatus as TaskStatus)
+    ? (rawStatus as TaskStatus)
+    : null;
+  const priority = VALID_PRIORITIES.includes(rawPriority as TaskPriority)
+    ? (rawPriority as TaskPriority)
+    : null;
 
   let query = supabase
     .from("tasks")
@@ -68,6 +79,26 @@ export async function POST(request: NextRequest) {
     entity_type: "task",
     entity_id: data.id,
   });
+
+  // Push to Google Calendar (if has date/deadline)
+  try {
+    const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+    CalendarSyncService.pushTaskToGoogle(user.id, data.id, supabase).catch(err => {
+      console.error(`[TasksAPI] Google Calendar sync failed for task ${data.id}:`, err);
+    });
+  } catch (err) {
+    console.error("[TasksAPI] Failed to load CalendarSyncService for google push:", err);
+  }
+
+  // Trigger AI Focus Time Blocking
+  try {
+    const { CalendarAiService } = await import("@/lib/ai/calendar-ai-service");
+    CalendarAiService.scheduleFocusBlocks(user.id, data.id, supabase).catch(err => {
+      console.error(`[TasksAPI] Focus blocking failed for task ${data.id}:`, err);
+    });
+  } catch (err) {
+    console.error("[TasksAPI] Failed to load CalendarAiService:", err);
+  }
 
   return NextResponse.json({ data }, { status: 201 });
 }

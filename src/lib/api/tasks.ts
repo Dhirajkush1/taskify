@@ -1,11 +1,11 @@
-import type { Task, TaskInsert, TaskUpdate } from "@/types/app.types";
+import type { Task, TaskInsert, TaskUpdate, TaskStatus, TaskPriority } from "@/types/app.types";
 import { createClient } from "@/lib/supabase/client";
 
 export async function fetchTasks(
   userId: string,
   filters?: {
-    status?: string;
-    priority?: string;
+    status?: TaskStatus;
+    priority?: TaskPriority;
     search?: string;
   }
 ): Promise<Task[]> {
@@ -31,11 +31,51 @@ export async function fetchTasks(
   return data ?? [];
 }
 
+function computePriority(title: string, deadlineStr?: string | null): "critical" | "high" | "medium" | "low" {
+  const cleanTitle = title.toLowerCase();
+  
+  // Safety or Medical keywords
+  const safetyKeywords = ["safety", "emergency", "danger", "hazard", "injury", "hurt", "hospital", "doctor", "medical", "accident", "gas", "fire"];
+  if (safetyKeywords.some(keyword => cleanTitle.includes(keyword))) {
+    return "critical";
+  }
+
+  if (deadlineStr) {
+    const deadline = new Date(deadlineStr);
+    const now = new Date();
+    const diffMs = deadline.getTime() - now.getTime();
+
+    // Deadline within 30 minutes
+    if (diffMs > 0 && diffMs <= 30 * 60 * 1000) {
+      return "critical";
+    }
+
+    // Today (within 24 hours of now, or same calendar day)
+    const isToday = deadline.toDateString() === now.toDateString() || (diffMs > 0 && diffMs <= 24 * 60 * 60 * 1000);
+    if (isToday) {
+      return "high";
+    }
+
+    // This week (within 7 days)
+    if (diffMs > 0 && diffMs <= 7 * 24 * 60 * 60 * 1000) {
+      return "medium";
+    }
+  }
+
+  return "low";
+}
+
 export async function createTask(task: TaskInsert): Promise<Task> {
   const supabase = createClient();
+  const calculatedPriority = computePriority(task.title, task.deadline);
+  const taskPayload = {
+    ...task,
+    priority: calculatedPriority
+  } as any;
+
   const { data, error } = await supabase
     .from("tasks")
-    .insert(task)
+    .insert(taskPayload)
     .select()
     .single();
 
@@ -48,9 +88,18 @@ export async function updateTask(
   updates: TaskUpdate
 ): Promise<Task> {
   const supabase = createClient();
+  const finalUpdates = { ...updates } as any;
+
+  if (updates.title !== undefined || updates.deadline !== undefined) {
+    const current = await fetchTask(id);
+    const finalTitle = updates.title !== undefined ? updates.title : current.title;
+    const finalDeadline = updates.deadline !== undefined ? updates.deadline : current.deadline;
+    finalUpdates.priority = computePriority(finalTitle, finalDeadline);
+  }
+
   const { data, error } = await supabase
     .from("tasks")
-    .update(updates)
+    .update(finalUpdates)
     .eq("id", id)
     .select()
     .single();
@@ -66,7 +115,10 @@ export async function deleteTask(id: string): Promise<void> {
 }
 
 export async function completeTask(id: string): Promise<Task> {
-  return updateTask(id, { status: "done", completion_percentage: 100 });
+  const task = await fetchTask(id);
+  const isEmergency = (task as any).category === "Emergency";
+  const finalStatus = isEmergency ? "archived" : "done";
+  return updateTask(id, { status: finalStatus, completion_percentage: 100 });
 }
 
 export async function archiveTask(id: string): Promise<Task> {

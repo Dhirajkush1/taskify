@@ -1,14 +1,16 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
+import { AIClient } from "@/lib/ai/providers";
 import type { Task } from "@/types/app.types";
+import { addMinutes } from "date-fns";
 
-export interface EmergencyStep {
+export type EmergencyStep = {
   step: string;
   duration: number;
   type: "focus" | "break" | "review";
-}
+};
 
-export interface RescuePlanData {
+export type RescuePlanData = {
   is_active: boolean;
   emergency_task_id: string | null;
   hours_remaining: number;
@@ -18,14 +20,9 @@ export interface RescuePlanData {
   estimated_finish_time: string | null;
   emergency_action_plan: EmergencyStep[];
   remaining_focus_sessions: number;
-}
+};
 
 export class RescueEngine {
-  private static getGenAI() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return null;
-    return new GoogleGenerativeAI(apiKey);
-  }
 
   /**
    * Evaluates the user's tasks and determines if Rescue Mode should be triggered.
@@ -100,15 +97,7 @@ export class RescueEngine {
       return null;
     }
 
-    // 3. Formulate the emergency plan using Gemini
-    const genAI = this.getGenAI();
-    if (!genAI) {
-      console.warn("Gemini API key missing for RescueEngine.");
-      return null;
-    }
-
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const tasksContext = pendingTasks.map((t) => ({
         id: t.id,
         title: t.title,
@@ -147,9 +136,17 @@ Respond ONLY with a valid JSON object matching this schema:
 
 Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleaned = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      const responseText = await AIClient.generateText(
+        [
+          { role: "user" as const, content: prompt }
+        ],
+        {
+          provider: "gemini",
+          model: "gemini-1.5-flash",
+          responseMimeType: "application/json"
+        }
+      );
+      const cleaned = responseText.replace(/```json/gi, "").replace(/```/gi, "").trim();
       const parsed = JSON.parse(cleaned);
 
       const planData: RescuePlanData = {
@@ -182,10 +179,14 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id" });
 
+      // Automatically sync Rescue Plan emergency sessions to Google Calendar
+      await this.syncRescuePlanToCalendar(userId, planData, supabase);
+
       // Log event in activity_logs
       await supabase.from("activity_logs").insert({
         user_id: userId,
-        action_type: "RescueModeActivated",
+        action: "RescueModeActivated",
+        entity_type: "system",
         metadata: {
           reason: triggerReason,
           recovery_probability: planData.recovery_probability,
@@ -231,11 +232,111 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
   }
 
   /**
+   * Syncs the emergency action plan focus steps to Supabase and Google Calendar.
+   */
+  private static async syncRescuePlanToCalendar(
+    userId: string,
+    planData: RescuePlanData,
+    supabase: any
+  ): Promise<void> {
+    try {
+      console.log(`[RescueEngine] Syncing rescue action plan to calendar for user ${userId}...`);
+      const nowStr = new Date().toISOString();
+
+      // 1. Delete all existing focus blocks starting after now
+      const { data: focusBlocks } = await supabase
+        .from("calendar_events")
+        .select("id, google_event_id, calendar_id")
+        .eq("user_id", userId)
+        .eq("event_type", "focus_block")
+        .gte("start_time", nowStr);
+
+      if (focusBlocks && focusBlocks.length > 0) {
+        const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+        for (const block of focusBlocks) {
+          await supabase.from("calendar_events").delete().eq("id", block.id);
+          if (block.google_event_id) {
+            await CalendarSyncService.deleteLocalEventFromGoogle(userId, block.google_event_id, block.calendar_id);
+          }
+        }
+      }
+
+      // 2. Schedule emergency steps from planData.emergency_action_plan
+      const focusSteps = planData.emergency_action_plan.filter(step => step.type === "focus");
+      if (focusSteps.length === 0) return;
+
+      const { CalendarAiService } = await import("@/lib/ai/calendar-ai-service");
+      const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+
+      const primaryCal = await supabase
+        .from("google_calendars")
+        .select("calendar_id")
+        .eq("user_id", userId)
+        .eq("primary", true)
+        .maybeSingle();
+      const calendarId = primaryCal?.data?.calendar_id || "primary";
+
+      let scheduledCount = 0;
+
+      // Fit each step in availability windows sequentially
+      for (const step of focusSteps) {
+        let scheduled = false;
+        let dayOffset = 0;
+
+        while (!scheduled && dayOffset < 5) {
+          const dateToSearch = new Date(Date.now() + dayOffset * 24 * 3600 * 1000);
+          const freeSlots = await CalendarAiService.getAvailableSlots(userId, dateToSearch, supabase);
+
+          for (const slot of freeSlots) {
+            const slotStart = new Date(slot.start);
+            const slotEnd = new Date(slot.end);
+            const slotDuration = (slotEnd.getTime() - slotStart.getTime()) / 60000;
+
+            if (slotDuration >= step.duration) {
+              const blockStart = slotStart;
+              const blockEnd = addMinutes(blockStart, step.duration);
+
+              const { data: event, error: insertError } = await supabase
+                .from("calendar_events")
+                .insert({
+                  user_id: userId,
+                  title: `🚨 Rescue Focus: ${step.step}`,
+                  description: `Emergency rescue focus session (duration: ${step.duration} mins).`,
+                  start_time: blockStart.toISOString(),
+                  end_time: blockEnd.toISOString(),
+                  event_type: "focus_block",
+                  status: "confirmed",
+                  visibility: "busy",
+                  calendar_id: calendarId
+                })
+                .select("id")
+                .single();
+
+              if (!insertError && event) {
+                await CalendarSyncService.pushLocalEventToGoogle(userId, event.id, supabase);
+                scheduled = true;
+                scheduledCount++;
+                break;
+              }
+            }
+          }
+          dayOffset++;
+        }
+      }
+
+      console.log(`[RescueEngine] Scheduled ${scheduledCount} emergency sessions on Google Calendar.`);
+    } catch (err) {
+      console.error("[RescueEngine] Failed to sync rescue plan to calendar:", err);
+    }
+  }
+
+  /**
    * Deactivates rescue mode.
    */
   static async deactivateRescue(userId: string): Promise<void> {
     const supabase = await createClient();
-    await supabase
+    const sp = supabase as any;
+    await sp
       .from("rescue_plans")
       .upsert({
         user_id: userId,
@@ -244,9 +345,40 @@ Do not wrap in markdown tags or include any explanation. Output pure JSON.`;
         emergency_action_plan: []
       }, { onConflict: "user_id" });
 
-    await supabase.from("activity_logs").insert({
+    // Delete rescue focus blocks to restore normal timeline
+    try {
+      const nowStr = new Date().toISOString();
+      const { data: rescueEvents } = await sp
+        .from("calendar_events")
+        .select("id, google_event_id, calendar_id")
+        .eq("user_id", userId)
+        .eq("event_type", "focus_block")
+        .ilike("title", "🚨 Rescue Focus%")
+        .gte("start_time", nowStr);
+
+      if (rescueEvents && rescueEvents.length > 0) {
+        const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+        for (const re of rescueEvents) {
+          await sp.from("calendar_events").delete().eq("id", re.id);
+          if (re.google_event_id) {
+            await CalendarSyncService.deleteLocalEventFromGoogle(userId, re.google_event_id, re.calendar_id);
+          }
+        }
+      }
+      
+      // Reschedule normal tasks to fill availability
+      const { PlannerService } = await import("@/lib/ai/planner-service");
+      await PlannerService.regenerateTimeBlockPlan(userId).catch(err => {
+        console.error("[RescueEngine] Post-deactivation replan failed:", err);
+      });
+    } catch (cleanErr) {
+      console.error("[RescueEngine] Error cleaning rescue calendar events:", cleanErr);
+    }
+
+    await sp.from("activity_logs").insert({
       user_id: userId,
-      action_type: "RescueModeDeactivated",
+      action: "RescueModeDeactivated",
+      entity_type: "system",
       metadata: { timestamp: new Date().toISOString() }
     });
   }

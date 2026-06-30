@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, RotateCcw, CheckCircle2, Clock, Brain, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -21,7 +21,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
   const [completed, setCompleted] = useState<boolean>(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // Filter and sort tasks for focus selection based on execution priority
   const activeTasks = tasks
@@ -44,38 +44,10 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
       return 0;
     });
 
-  // Reset time when preset changes
-  useEffect(() => {
-    if (!isRunning) {
-      setTimeLeft(durationPreset * 60);
-    }
-  }, [durationPreset, isRunning]);
-
-  // Timer tick down
-  useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleTimerFinish();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning]);
-
   // Helper to play synthesized beep/chime using Web Audio API (no external asset dependencies!)
   const playSynthesizedChime = () => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       const ctx = new AudioContext();
       
@@ -107,7 +79,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
     }
   };
 
-  const handleTimerFinish = async () => {
+  const handleTimerFinish = useCallback(async () => {
     setIsRunning(false);
     playSynthesizedChime();
     triggerConfetti(); // Trigger confetti celebration!
@@ -123,7 +95,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
           task_id: selectedTaskId || null,
           duration_minutes: durationPreset,
           completed_minutes: durationPreset,
-          status: "completed",
+          status: "completed" as const,
         });
 
         // 2. If a task was selected, automatically update its progress/status
@@ -131,7 +103,7 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
           await supabase
             .from("tasks")
             .update({
-              status: "done",
+              status: "done" as const,
               completion_percentage: 100,
               updated_at: new Date().toISOString(),
             })
@@ -162,7 +134,35 @@ export function FocusSessionTimer({ tasks, onSessionComplete }: FocusSessionTime
       setSaving(false);
       if (onSessionComplete) onSessionComplete();
     }
-  };
+  }, [selectedTaskId, durationPreset, supabase, onSessionComplete]);
+
+  // Reset time when preset changes
+  useEffect(() => {
+    if (!isRunning) {
+      setTimeLeft(durationPreset * 60);
+    }
+  }, [durationPreset, isRunning]);
+
+  // Timer tick down
+  useEffect(() => {
+    if (isRunning) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            handleTimerFinish();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isRunning, handleTimerFinish]);
 
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();

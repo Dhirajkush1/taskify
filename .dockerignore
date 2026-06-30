@@ -1,0 +1,59 @@
+# ── Build outputs ─────────────────────────────────────────────
+.next
+out
+build
+
+# ── Dependencies (re-installed inside container) ──────────────
+node_modules
+.pnpm-store
+
+# ── Environment & Secrets (injected at runtime, never baked in) ──
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# ── TypeScript build cache ────────────────────────────────────
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# ── IDE & Editor ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── OS artifacts ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Debug logs ───────────────────────────────────────────────
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Git ───────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Docs & repo files not needed in container ─────────────────
+README.md
+*.md
+map.md
+
+# ── Supabase (migrations run separately, not in container) ────
+supabase/
+
+# ── Test files ────────────────────────────────────────────────
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+__tests__/

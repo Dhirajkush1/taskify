@@ -11,10 +11,12 @@ export function RealtimeSyncProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!user) return;
+  const userId = user?.id;
 
-    console.log("[RealtimeSync] Initializing database realtime subscription for user:", user.id);
+  useEffect(() => {
+    if (!userId) return;
+
+    console.log("[RealtimeSync] Initializing database realtime subscription for user:", userId);
     const supabase = createClient();
 
     // Subscribe to all public postgres database changes.
@@ -45,11 +47,37 @@ export function RealtimeSyncProvider({ children }: { children: ReactNode }) {
         console.log(`[RealtimeSync] Subscription status: ${status}`);
       });
 
+    // Timezone self-healing detection check
+    const checkAndTimezoneSelfHeal = async () => {
+      try {
+        const { data: settingsData } = await supabase
+          .from("settings")
+          .select("timezone")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+        if (!settingsData || settingsData.timezone === "UTC") {
+          console.log(`[TimezoneSelfHeal] Automatically updating timezone to ${detectedTimezone} for user ${userId}`);
+          await supabase.from("settings").upsert({
+            user_id: userId,
+            timezone: detectedTimezone,
+            locale: navigator.language || "en-US",
+            updated_at: new Date().toISOString()
+          }, { onConflict: "user_id" });
+        }
+      } catch (err) {
+        console.error("[TimezoneSelfHeal] Error checking or self-healing timezone:", err);
+      }
+    };
+    checkAndTimezoneSelfHeal();
+
     return () => {
       console.log("[RealtimeSync] Unsubscribing from realtime changes...");
       supabase.removeChannel(channel);
     };
-  }, [user, router, queryClient]);
+  }, [userId, router, queryClient]);
 
   return <>{children}</>;
 }
