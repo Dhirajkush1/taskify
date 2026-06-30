@@ -11,7 +11,7 @@ const PLANS = [
     features: [
       "Up to 20 tasks/month",
       "Basic AI extraction",
-      "Mission Control (5 conversations)",
+      "Taskify Buddy (5 conversations)",
       "Email support",
     ],
     highlight: false,
@@ -23,7 +23,7 @@ const PLANS = [
     features: [
       "Unlimited tasks",
       "Advanced AI extraction",
-      "Unlimited Mission Control",
+      "Unlimited Taskify Buddy",
       "Risk intelligence",
       "Calendar integration",
       "Priority support",

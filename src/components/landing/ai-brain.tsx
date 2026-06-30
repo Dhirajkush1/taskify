@@ -36,7 +36,7 @@ export function AIBrain({ activeModule, onOrbitUpdate, hoveredModule }: AIBrainP
 
   // 12 Orbiting Modules distributed volumetrically around the brain to prevent clumping
   const orbitItemsRef = useRef<OrbitItem[]>([
-    { id: "mission", label: "Mission Control", angle: 0, radiusX: 245, heightOffset: -140, speed: 0.003 },
+    { id: "mission", label: "Taskify Buddy", angle: 0, radiusX: 245, heightOffset: -140, speed: 0.003 },
     { id: "calendar", label: "Calendar", angle: (Math.PI * 2) / 12 * 1, radiusX: 280, heightOffset: -95, speed: 0.0025 },
     { id: "telegram", label: "Telegram Bot", angle: (Math.PI * 2) / 12 * 2, radiusX: 260, heightOffset: -50, speed: 0.0032 },
     { id: "voice", label: "Voice Sync", angle: (Math.PI * 2) / 12 * 3, radiusX: 240, heightOffset: -10, speed: 0.0028 },

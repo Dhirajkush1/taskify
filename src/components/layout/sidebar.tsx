@@ -17,7 +17,8 @@ import {
   LogOut,
   Target,
   FolderKanban,
-  Inbox
+  Inbox,
+  Bell
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -31,7 +32,8 @@ const NAV_ITEMS = [
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Calendar", href: "/calendar", icon: Calendar },
   { label: "Inbox", href: "/inbox", icon: Inbox },
-  { label: "Mission Control", href: "/mission-control", icon: Zap },
+  { label: "Reminder Center", href: "/reminders", icon: Bell },
+  { label: "Taskify Buddy", href: "/taskify-buddy", icon: Zap },
 ] as const;
 
 const BOTTOM_ITEMS = [

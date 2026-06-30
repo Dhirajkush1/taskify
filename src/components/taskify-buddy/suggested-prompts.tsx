@@ -53,7 +53,7 @@ export function SuggestedPrompts({ onPromptSelect }: SuggestedPromptsProps) {
         className="text-xl font-bold mb-2"
         style={{ color: "var(--text-primary)" }}
       >
-        Mission Control
+        Taskify Buddy
       </motion.h2>
 
       <motion.p

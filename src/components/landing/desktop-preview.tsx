@@ -118,7 +118,7 @@ export function DesktopPreview() {
 
             <div className="flex flex-col gap-1">
               {[
-                { id: "dashboard", label: "Mission Control", icon: Sparkles },
+                { id: "dashboard", label: "Taskify Buddy", icon: Sparkles },
                 { id: "calendar", label: "Calendar View", icon: Calendar },
                 { id: "reminders", label: "Telegram Settings", icon: Clock }
               ].map(tab => {

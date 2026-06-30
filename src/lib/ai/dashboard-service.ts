@@ -199,7 +199,7 @@ export class DashboardService {
       return !hasActiveBlockingDeps;
     }) || sortedPending[0] || null;
 
-    let nbaReason = "Add your first task in Mission Control to get started!";
+    let nbaReason = "Add your first task in Taskify Buddy to get started!";
     if (nextBestTask) {
       const deps = (nextBestTask.dependencies as string[]) || [];
       if (deps.length > 0) {

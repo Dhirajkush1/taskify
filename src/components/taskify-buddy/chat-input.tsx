@@ -216,7 +216,7 @@ export function ChatInput({
         {/* Text Area */}
         <textarea
           ref={textareaRef}
-          id="mission-control-input"
+          id="taskify-buddy-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}

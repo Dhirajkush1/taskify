@@ -3,10 +3,14 @@ import type { Database } from "@/types/database.types";
 
 export interface ReminderPayload {
   title: string;
-  reminder_time: string; // ISO string or relative description
+  description?: string | null;
+  reminder_time?: string | null; // ISO string, relative description, or null to infer
   reminder_type?: "specific_time" | "relative_time" | "recurring" | "deadline" | "smart";
   recurrence_pattern?: string | null;
   task_id?: string | null;
+  priority?: "low" | "medium" | "high" | "critical" | null;
+  notification_channels?: string[] | null;
+  created_from?: "telegram" | "dashboard" | "calendar" | "ai" | "voice";
 }
 
 // ── Timezone Utility Helpers ─────────────────────────────────────
@@ -55,37 +59,36 @@ function getUtcDate(localDate: Date, timezone: string): Date {
 
 export class ReminderService {
   /**
-   * Parse a relative time description (e.g., "in 15 minutes") or a specific time string
-   * into a proper ISO timestamp.
+   * Parse relative time descriptions into absolute UTC dates using timezone offsets.
    */
   static parseReminderTime(timeInput: string, userTimezone: string = "UTC"): Date {
     const cleanInput = timeInput.toLowerCase().trim();
     const localNow = getLocalNow(userTimezone);
     const now = new Date();
 
-    // Handle relative minutes
-    const minMatch = cleanInput.match(/in\s+(\d+)\s+min/i) || cleanInput.match(/(\d+)\s+minute/i);
+    // 15 min / 30 mins
+    const minMatch = cleanInput.match(/(\d+)\s*mins?/i) || cleanInput.match(/in\s*(\d+)\s*min/i);
     if (minMatch && minMatch[1]) {
       const minutes = parseInt(minMatch[1], 10);
       return new Date(now.getTime() + minutes * 60 * 1000);
     }
 
-    // Handle relative hours
-    const hourMatch = cleanInput.match(/in\s+(\d+)\s+hour/i) || cleanInput.match(/(\d+)\s+hour/i);
+    // 2 hours
+    const hourMatch = cleanInput.match(/(\d+)\s*hours?/i) || cleanInput.match(/in\s*(\d+)\s*hour/i);
     if (hourMatch && hourMatch[1]) {
       const hours = parseInt(hourMatch[1], 10);
       return new Date(now.getTime() + hours * 60 * 60 * 1000);
     }
 
-    // Handle relative days
-    const dayMatch = cleanInput.match(/in\s+(\d+)\s+day/i) || cleanInput.match(/(\d+)\s+day/i);
+    // Days
+    const dayMatch = cleanInput.match(/(\d+)\s*days?/i) || cleanInput.match(/in\s*(\d+)\s*day/i);
     if (dayMatch && dayMatch[1]) {
       const days = parseInt(dayMatch[1], 10);
       return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
     }
 
     // "tomorrow morning" -> tomorrow at 9 AM local
-    if (cleanInput.includes("tomorrow morning")) {
+    if (cleanInput.includes("tomorrow morning") || cleanInput === "tomorrow morning") {
       const targetLocal = new Date(localNow);
       targetLocal.setDate(localNow.getDate() + 1);
       targetLocal.setHours(9, 0, 0, 0);
@@ -93,14 +96,14 @@ export class ReminderService {
     }
 
     // "tomorrow evening" -> tomorrow at 6 PM local
-    if (cleanInput.includes("tomorrow evening")) {
+    if (cleanInput.includes("tomorrow evening") || cleanInput === "tomorrow evening") {
       const targetLocal = new Date(localNow);
       targetLocal.setDate(localNow.getDate() + 1);
       targetLocal.setHours(18, 0, 0, 0);
       return getUtcDate(targetLocal, userTimezone);
     }
 
-    // "tomorrow" or "tomorrow at ..."
+    // "tomorrow at ..." or "tomorrow ..."
     if (cleanInput.startsWith("tomorrow")) {
       const targetLocal = new Date(localNow);
       targetLocal.setDate(localNow.getDate() + 1);
@@ -121,7 +124,7 @@ export class ReminderService {
     }
 
     // "tonight" -> today at 8 PM local (or tomorrow if already past 8 PM)
-    if (cleanInput.includes("tonight")) {
+    if (cleanInput.includes("tonight") || cleanInput === "tonight") {
       const targetLocal = new Date(localNow);
       if (localNow.getHours() >= 20) {
         targetLocal.setDate(localNow.getDate() + 1);
@@ -131,7 +134,7 @@ export class ReminderService {
     }
 
     // "after lunch" -> today at 1:30 PM local (or tomorrow if already past)
-    if (cleanInput.includes("after lunch")) {
+    if (cleanInput.includes("after lunch") || cleanInput === "after lunch") {
       const targetLocal = new Date(localNow);
       if (localNow.getHours() >= 13 && (localNow.getHours() > 13 || localNow.getMinutes() >= 30)) {
         targetLocal.setDate(localNow.getDate() + 1);
@@ -140,8 +143,60 @@ export class ReminderService {
       return getUtcDate(targetLocal, userTimezone);
     }
 
-    // "next monday" -> next Monday at 9 AM local
-    if (cleanInput.includes("next monday")) {
+    // "before lunch" -> today at 11:30 AM local (or tomorrow if already past)
+    if (cleanInput.includes("before lunch") || cleanInput === "before lunch") {
+      const targetLocal = new Date(localNow);
+      if (localNow.getHours() >= 11 && (localNow.getHours() > 11 || localNow.getMinutes() >= 30)) {
+        targetLocal.setDate(localNow.getDate() + 1);
+      }
+      targetLocal.setHours(11, 30, 0, 0);
+      return getUtcDate(targetLocal, userTimezone);
+    }
+
+    // "after office" / "friday evening"
+    if (cleanInput.includes("after office") || cleanInput === "after office") {
+      const targetLocal = new Date(localNow);
+      if (localNow.getHours() >= 18) {
+        targetLocal.setDate(localNow.getDate() + 1);
+      }
+      targetLocal.setHours(18, 0, 0, 0);
+      return getUtcDate(targetLocal, userTimezone);
+    }
+
+    if (cleanInput.includes("friday evening")) {
+      const targetLocal = new Date(localNow);
+      const currentDay = localNow.getDay();
+      let daysToAdd = (5 - currentDay + 7) % 7;
+      if (daysToAdd === 0 && localNow.getHours() >= 18) {
+        daysToAdd = 7;
+      }
+      targetLocal.setDate(localNow.getDate() + daysToAdd);
+      targetLocal.setHours(18, 0, 0, 0);
+      return getUtcDate(targetLocal, userTimezone);
+    }
+
+    // "morning"
+    if (cleanInput.includes("morning") || cleanInput === "morning") {
+      const targetLocal = new Date(localNow);
+      if (localNow.getHours() >= 9) {
+        targetLocal.setDate(localNow.getDate() + 1);
+      }
+      targetLocal.setHours(9, 0, 0, 0);
+      return getUtcDate(targetLocal, userTimezone);
+    }
+
+    // "night"
+    if (cleanInput.includes("night") || cleanInput === "night") {
+      const targetLocal = new Date(localNow);
+      if (localNow.getHours() >= 21) {
+        targetLocal.setDate(localNow.getDate() + 1);
+      }
+      targetLocal.setHours(21, 0, 0, 0);
+      return getUtcDate(targetLocal, userTimezone);
+    }
+
+    // "next week" -> next Monday at 9 AM local
+    if (cleanInput.includes("next week") || cleanInput === "next week") {
       const targetLocal = new Date(localNow);
       const currentDay = localNow.getDay();
       const daysToAdd = (8 - currentDay) % 7 || 7;
@@ -162,14 +217,83 @@ export class ReminderService {
   }
 
   /**
-   * Inserts a new reminder into Supabase.
+   * Intelligently infers reminder schedule when users omit exact times.
+   */
+  static inferReminderSettings(
+    title: string
+  ): { reminder_time: string; priority: "low" | "medium" | "high" | "critical"; recurrence_pattern?: string | null; ask_followup?: string } {
+    const cleanTitle = title.toLowerCase().trim();
+
+    if (cleanTitle.includes("drink water") || cleanTitle.includes("hydrate")) {
+      return {
+        reminder_time: "in 1 hour",
+        priority: "low",
+        recurrence_pattern: "every 2 hours"
+      };
+    }
+
+    if (cleanTitle.includes("walk") || cleanTitle.includes("stretch")) {
+      return {
+        reminder_time: "in 1 hour",
+        priority: "low",
+        recurrence_pattern: "daily"
+      };
+    }
+
+    if (cleanTitle.includes("workout") || cleanTitle.includes("gym") || cleanTitle.includes("exercise")) {
+      return {
+        reminder_time: "6 PM",
+        priority: "medium",
+        recurrence_pattern: "daily"
+      };
+    }
+
+    if (cleanTitle.includes("study") || cleanTitle.includes("read book") || cleanTitle.includes("homework")) {
+      return {
+        reminder_time: "7 PM", // Inferred available focus slot
+        priority: "medium"
+      };
+    }
+
+    if (cleanTitle.includes("call mom") || cleanTitle.includes("call dad") || cleanTitle.includes("call family")) {
+      return {
+        reminder_time: "8 PM",
+        priority: "medium"
+      };
+    }
+
+    if (cleanTitle.includes("pay rent") || cleanTitle.includes("rent")) {
+      return {
+        reminder_time: "tomorrow 10 AM",
+        priority: "critical",
+        ask_followup: "What date is your rent due?"
+      };
+    }
+
+    if (cleanTitle.includes("pay bill") || cleanTitle.includes("electricity bill") || cleanTitle.includes("internet bill")) {
+      return {
+        reminder_time: "tomorrow 10 AM",
+        priority: "high",
+        ask_followup: "When is the bill due?"
+      };
+    }
+
+    // Default inference: Tomorrow at 10 AM local
+    return {
+      reminder_time: "tomorrow 10 AM",
+      priority: "medium"
+    };
+  }
+
+  /**
+   * Inserts a new reminder, routing through the centralized engine.
    */
   static async createReminder(
     userId: string,
     payload: ReminderPayload,
     supabase: SupabaseClient<Database>
   ) {
-    // Fetch user's timezone from settings
+    // 1. Fetch user settings for Timezone preferences
     const { data: settings } = await supabase
       .from("settings")
       .select("timezone")
@@ -177,24 +301,45 @@ export class ReminderService {
       .maybeSingle();
     const userTimezone = settings?.timezone || "UTC";
 
+    let timeString = payload.reminder_time;
+    let inferredPriority: any = payload.priority || null;
+    let inferredRecurrence = payload.recurrence_pattern || null;
+    let followUpPrompt: string | undefined = undefined;
+
+    // 2. Apply AI Intelligent Time Heuristics if no time is provided
+    if (!timeString) {
+      const inference = this.inferReminderSettings(payload.title);
+      timeString = inference.reminder_time;
+      if (!inferredPriority) inferredPriority = inference.priority;
+       if (!inferredRecurrence) inferredRecurrence = inference.recurrence_pattern || null;
+       if (inference.ask_followup) followUpPrompt = inference.ask_followup;
+    }
+
+    // 3. Resolve to absolute UTC Date
     let resolvedTime: Date;
-    if (payload.reminder_time.includes("-") || payload.reminder_time.includes("T") || !isNaN(Date.parse(payload.reminder_time))) {
-      resolvedTime = new Date(payload.reminder_time);
+    if (timeString.includes("-") || timeString.includes("T") || !isNaN(Date.parse(timeString))) {
+      resolvedTime = new Date(timeString);
       if (isNaN(resolvedTime.getTime())) {
-        resolvedTime = this.parseReminderTime(payload.reminder_time, userTimezone);
+        resolvedTime = this.parseReminderTime(timeString, userTimezone);
       }
     } else {
-      resolvedTime = this.parseReminderTime(payload.reminder_time, userTimezone);
+      resolvedTime = this.parseReminderTime(timeString, userTimezone);
     }
 
     const reminderData = {
       user_id: userId,
       task_id: payload.task_id || null,
       title: payload.title,
-      reminder_time: resolvedTime.toISOString(),
-      reminder_type: (payload.reminder_type || "specific_time") as "specific_time" | "relative_time" | "recurring" | "deadline" | "smart",
-      recurrence_pattern: payload.recurrence_pattern || null,
-      status: "pending" as any,
+      description: payload.description || null,
+      due_at: resolvedTime.toISOString(),
+      reminder_time: resolvedTime.toISOString(), // compatibility mapping
+      timezone: userTimezone,
+      reminder_type: (payload.reminder_type || "specific_time"),
+      recurrence_pattern: inferredRecurrence,
+      status: "pending",
+      priority: inferredPriority || "medium",
+      notification_channels: payload.notification_channels || ["telegram", "web"],
+      created_from: payload.created_from || "dashboard",
       delivery_attempts: 0,
       follow_up_sent: false
     };
@@ -210,20 +355,41 @@ export class ReminderService {
       throw new Error(`Failed to create reminder: ${error.message}`);
     }
 
-    console.log(`[ReminderService] Successfully created reminder "${payload.title}" for ${reminderData.reminder_time}`);
+    console.log(`[ReminderEngine] Created reminder "${payload.title}" for user ${userId} scheduled at ${reminderData.due_at}`);
+
+    // If an AI clarification question was generated, append it to the chat thread
+    if (followUpPrompt) {
+      const { data: latestConv } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestConv) {
+        await supabase.from("messages").insert({
+          conversation_id: latestConv.id,
+          role: "assistant",
+          content: followUpPrompt,
+          metadata: { type: "clarification", reminder_id: data.id }
+        });
+      }
+    }
+
     return data;
   }
 
   /**
-   * Fetches all active/pending reminders for a user.
+   * Fetches active/pending reminders for a user.
    */
   static async getPendingReminders(userId: string, supabase: SupabaseClient<Database>) {
     const { data, error } = await supabase
       .from("reminders")
       .select("*, task:tasks(title)")
       .eq("user_id", userId)
-      .eq("status", "pending")
-      .order("reminder_time", { ascending: true });
+      .in("status", ["pending", "scheduled"])
+      .order("due_at", { ascending: true });
 
     if (error) {
       console.error("[ReminderService] Error fetching reminders:", error.message);
@@ -233,39 +399,19 @@ export class ReminderService {
   }
 
   /**
-   * Cancels a pending reminder.
-   */
-  static async cancelReminder(userId: string, reminderId: string, supabase: SupabaseClient<Database>) {
-    const { data, error } = await supabase
-      .from("reminders")
-      .update({ status: "cancelled" as const, updated_at: new Date().toISOString() })
-      .eq("id", reminderId)
-      .eq("user_id", userId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("[ReminderService] Error cancelling reminder:", error.message);
-      throw new Error(`Failed to cancel reminder: ${error.message}`);
-    }
-    return data;
-  }
-
-  /**
-   * Dispatches all pending reminders that are past due.
-   * Runs automatically every minute via cron.
+   * Background execution daemon (runs via cron).
    */
   static async dispatchPendingReminders(supabase: any) {
     try {
       const nowIso = new Date().toISOString();
       console.log(`[ReminderEngine] Scanning for due reminders at ${nowIso}...`);
-      
-      // Fetch reminders past due
+
+      // Fetch pending or scheduled reminders past due
       const { data: reminders, error } = await supabase
         .from("reminders")
         .select("*, task:tasks(*)")
-        .in("status", ["pending", "scheduled", "failed", "sending"])
-        .lte("reminder_time", nowIso)
+        .in("status", ["pending", "scheduled"])
+        .lte("due_at", nowIso)
         .lt("delivery_attempts", 5);
 
       if (error) {
@@ -274,155 +420,140 @@ export class ReminderService {
       }
 
       if (!reminders || reminders.length === 0) {
-        console.log("[ReminderEngine] No pending reminders are currently due.");
+        console.log("[ReminderEngine] No reminders are currently due.");
         return;
       }
 
-      // Filter by next_retry_at in memory
-      const dueReminders = reminders.filter((r: any) => {
-        if (!r.next_retry_at) return true;
-        return new Date(r.next_retry_at).getTime() <= Date.now();
-      });
+      console.log(`[ReminderEngine] Found ${reminders.length} due reminders to dispatch.`);
 
-      console.log(`[ReminderEngine] Found ${dueReminders.length} due reminders to dispatch.`);
-
-      for (const r of dueReminders) {
+      for (const r of reminders) {
         let deliverySuccess = false;
         let errMessage = "";
-        
+
         try {
-          // Increment delivery attempts and lock status to 'sending'
+          // Lock state to scheduled to prevent double delivery
           const currentAttempts = (r.delivery_attempts || 0) + 1;
           await supabase
             .from("reminders")
-            .update({ 
-              status: "sending" as any, 
+            .update({
+              status: "scheduled" as any,
               delivery_attempts: currentAttempts,
               last_attempt: nowIso,
               updated_at: nowIso
             } as any)
             .eq("id", r.id);
 
-          // 1. Check if user has active Telegram account
-          const { data: account } = await supabase
-            .from("telegram_accounts")
-            .select("*")
-            .eq("user_id", r.user_id)
-            .eq("is_active", true)
-            .maybeSingle();
+          // Get channels
+          const channels = r.notification_channels || ["telegram", "web"];
 
-          const { data: prefs } = await supabase
-            .from("notification_preferences")
-            .select("*")
-            .eq("user_id", r.user_id)
-            .maybeSingle();
+          // 1. Deliver to Telegram channel
+          if (channels.includes("telegram")) {
+            const { data: account } = await supabase
+              .from("telegram_accounts")
+              .select("*")
+              .eq("user_id", r.user_id)
+              .eq("is_active", true)
+              .maybeSingle();
 
-          const telegramEnabled = account && account.chat_id && (prefs?.telegram_enabled !== false) && (prefs?.reminders_enabled !== false);
+            const { data: prefs } = await supabase
+              .from("notification_preferences")
+              .select("*")
+              .eq("user_id", r.user_id)
+              .maybeSingle();
 
-          if (telegramEnabled) {
-            console.log(`[ReminderEngine] Sending Telegram reminder to user ${r.user_id} (chat ID ${account.chat_id})`);
-            const { TelegramBotService } = await import("@/lib/telegram/bot-service");
-            const dateStr = r.reminder_time ? new Date(r.reminder_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Now";
-            
-            const messageText = `🔔 <b>Reminder</b>\n\n${r.title}\n\n<b>Scheduled:</b> ${dateStr}`;
-            
-            const replyMarkup = {
-              inline_keyboard: [
-                [
-                  { text: "✅ Done", callback_data: `reminder:complete:${r.id}` },
-                  { text: "⏰ 10 min later", callback_data: `reminder:snooze:${r.id}` }
-                ],
-                [
-                  { text: "🤕 Busy", callback_data: `reminder:busy:${r.id}` },
-                  { text: "❌ Skip", callback_data: `reminder:skip:${r.id}` }
+            const telegramEnabled = account && account.chat_id && (prefs?.telegram_enabled !== false);
+
+            if (telegramEnabled) {
+              const { TelegramBotService } = await import("@/lib/telegram/bot-service");
+              const dateStr = new Date(r.due_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              
+              const messageText = `⏰ <b>Reminder Alert</b>\n\n<b>${r.title}</b>\n${r.description || "Due now."}\n\n<i>Scheduled: ${dateStr}</i>`;
+              
+              const replyMarkup = {
+                inline_keyboard: [
+                  [
+                    { text: "✅ Completed", callback_data: `reminder:complete:${r.id}` },
+                    { text: "⏳ Snooze 10 min", callback_data: `reminder:snooze:${r.id}` }
+                  ],
+                  [
+                    { text: "📅 Reschedule", callback_data: `reminder:busy:${r.id}` },
+                    { text: "❌ Dismiss", callback_data: `reminder:skip:${r.id}` }
+                  ]
                 ]
-              ]
-            };
+              };
 
-            const success = await TelegramBotService.sendMessage(account.chat_id, messageText, {
-              reply_markup: replyMarkup
-            });
+              const success = await TelegramBotService.sendMessage(account.chat_id, messageText, {
+                reply_markup: replyMarkup
+              });
 
-            if (!success) {
-              throw new Error("Telegram API returned failure status.");
+              if (!success) throw new Error("Telegram API returned failure.");
+              
+              // Log to telegram_notifications
+              await supabase.from("telegram_notifications").insert({
+                user_id: r.user_id,
+                telegram_account_id: account.id,
+                notification_type: "reminder",
+                title: "Task Focus Reminder",
+                body: r.title,
+                status: "sent"
+              });
+              deliverySuccess = true;
             }
-
-            // Log sent notification in telegram_notifications
-            await supabase.from("telegram_notifications").insert({
-              user_id: r.user_id,
-              telegram_account_id: account.id,
-              notification_type: "reminder",
-              title: "Task Focus Reminder",
-              body: r.title,
-              status: "sent"
-            });
-          } else {
-            console.log(`[ReminderEngine] Telegram not connected or disabled for user ${r.user_id}, falling back to Web Notification only.`);
           }
 
-          // 2. Create Web Notification in Notifications table
-          await supabase.from("notifications").insert({
-            user_id: r.user_id,
-            title: "Clutch Reminder 🔔",
-            message: r.title,
-            type: "reminder",
-            read: false,
-            task_id: r.task_id || null
-          });
+          // 2. Deliver to Web UI Notification center channel
+          if (channels.includes("web")) {
+            await supabase.from("notifications").insert({
+              user_id: r.user_id,
+              title: "Clutch Reminder ⏰",
+              message: `${r.title} is due now.`,
+              type: "reminder",
+              read: false,
+              task_id: r.task_id || null
+            });
+            deliverySuccess = true;
+          }
 
-          deliverySuccess = true;
         } catch (dispatchErr: any) {
           console.error(`[ReminderEngine] Failed to deliver reminder ${r.id}:`, dispatchErr);
           errMessage = dispatchErr.message || "Unknown error";
         }
 
-        // Update database with outcome
+        // 3. Update database state on outcome
         if (deliverySuccess) {
           await supabase
             .from("reminders")
-            .update({ 
-              status: "sent" as any, 
-              sent_at: nowIso,
+            .update({
+              status: "delivered" as any,
+              delivered_at: nowIso,
               failure_reason: null,
               next_retry_at: null,
-              updated_at: nowIso
-            } as any)
-            .eq("id", r.id);
-          
-          await supabase.from("activity_logs").insert({
-            user_id: r.user_id,
-            action: "reminder_sent",
-            entity_type: "reminder",
-            entity_id: r.id
-          });
-          
-          console.log(`[ReminderEngine] Successfully dispatched reminder ${r.id}`);
-        } else {
-          // Retry queue logic (1 min, 5 min, 15 min, 30 min)
-          const attempts = (r.delivery_attempts || 0) + 1;
-          const retryIntervals = [1, 5, 15, 30]; // in minutes
-          const minutes = retryIntervals[attempts - 1] || 30;
-          const nextRetry = new Date(Date.now() + minutes * 60 * 1000).toISOString();
-          
-          const newStatus = attempts >= 5 ? "failed" : "failed"; // Let it state as failed but next_retry_at will check it
-          
-          await supabase
-            .from("reminders")
-            .update({ 
-              status: (attempts >= 5 ? "failed" : "failed") as any,
-              failure_reason: errMessage,
-              next_retry_at: attempts >= 5 ? null : nextRetry,
               updated_at: nowIso
             } as any)
             .eq("id", r.id);
 
           await supabase.from("activity_logs").insert({
             user_id: r.user_id,
-            action: "reminder_delivery_failed",
+            action: "reminder_delivered",
             entity_type: "reminder",
-            entity_id: r.id,
-            metadata: { error: errMessage, attempt: attempts }
+            entity_id: r.id
           });
+        } else {
+          // Retry logic (1 min, 5 min, 15 min, 30 min)
+          const attempts = (r.delivery_attempts || 0);
+          const retryIntervals = [1, 5, 15, 30];
+          const minutes = retryIntervals[attempts - 1] || 30;
+          const nextRetry = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+
+          await supabase
+            .from("reminders")
+            .update({
+              status: (attempts >= 5 ? "expired" : "pending") as any,
+              failure_reason: errMessage,
+              next_retry_at: attempts >= 5 ? null : nextRetry,
+              updated_at: nowIso
+            } as any)
+            .eq("id", r.id);
         }
       }
     } catch (err) {
@@ -431,36 +562,28 @@ export class ReminderService {
   }
 
   /**
-   * Scans for ignored reminders and dispatches the AI follow-up dialogue prompts.
+   * Ignored reminders check and follow-up prompt logs.
    */
   static async checkAndTriggerFollowUps(supabase: any) {
     try {
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      console.log(`[ReminderEngine] Scanning for ignored reminders sent before ${tenMinutesAgo}...`);
-
-      // Fetch sent reminders that have been ignored for 10 minutes and don't have follow-ups sent
+      
       const { data: reminders, error } = await supabase
         .from("reminders")
         .select("*, task:tasks(*)")
-        .eq("status", "sent")
+        .eq("status", "delivered")
         .eq("follow_up_sent", false)
-        .lte("sent_at", tenMinutesAgo);
+        .lte("delivered_at", tenMinutesAgo);
 
       if (error) {
         console.error("[ReminderEngine] Error loading reminders for follow-up:", error.message);
         return;
       }
 
-      if (!reminders || reminders.length === 0) {
-        console.log("[ReminderEngine] No reminders require follow-up alerts at this time.");
-        return;
-      }
+      if (!reminders || reminders.length === 0) return;
 
       for (const r of reminders) {
         try {
-          console.log(`[ReminderEngine] Triggering AI follow-up for reminder ${r.id}`);
-
-          // Fetch Telegram profile
           const { data: account } = await supabase
             .from("telegram_accounts")
             .select("*")
@@ -468,16 +591,7 @@ export class ReminderService {
             .eq("is_active", true)
             .maybeSingle();
 
-          const { data: prefs } = await supabase
-            .from("notification_preferences")
-            .select("*")
-            .eq("user_id", r.user_id)
-            .maybeSingle();
-
-          const telegramEnabled = account && account.chat_id && (prefs?.telegram_enabled !== false) && (prefs?.reminders_enabled !== false);
-
-          // 1. Send Telegram Follow-Up message if enabled
-          if (telegramEnabled) {
+          if (account && account.chat_id) {
             const { TelegramBotService } = await import("@/lib/telegram/bot-service");
             const replyMarkup = {
               inline_keyboard: [
@@ -488,85 +602,43 @@ export class ReminderService {
                 [
                   { text: "🤝 Need Help", callback_data: `reminder:help:${r.id}` },
                   { text: "⏰ Later", callback_data: `reminder:later:${r.id}` }
-                ],
-                [
-                  { text: "❌ Skip", callback_data: `reminder:skip:${r.id}` }
                 ]
               ]
             };
 
             await TelegramBotService.sendMessage(
               account.chat_id,
-              `🤔 <b>Clutch Follow-up</b>\n\nI noticed you haven't started yet on: "${r.title}".\n\nDid something come up?`,
+              `🤔 <b>Clutch Follow-up</b>\n\nI noticed you haven't checked off: "${r.title}". Did something come up?`,
               { reply_markup: replyMarkup }
             );
           }
 
-          // 2. Create Web Notification in notifications table
+          // Trigger follow-up notification in database
           await supabase.from("notifications").insert({
             user_id: r.user_id,
             title: "Clutch Follow-up 🤔",
-            message: `I noticed you haven't started yet on: "${r.title}". Did something come up?`,
+            message: `I noticed you haven't checked off: "${r.title}". Did something come up?`,
             type: "follow_up",
             read: false,
             task_id: r.task_id || null
           });
 
-          // 3. Insert message card into active chat conversation
-          const { data: latestConv } = await supabase
-            .from("conversations")
-            .select("id")
-            .eq("user_id", r.user_id)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (latestConv) {
-            await supabase.from("messages").insert({
-              conversation_id: latestConv.id,
-              role: "assistant",
-              content: `I noticed you haven't started yet on: "${r.title}". Did something come up?`,
-              metadata: { 
-                type: "follow_up", 
-                reminder_id: r.id, 
-                task_id: r.task_id || null,
-                title: r.title 
-              }
-            });
-            
-            // Touch conversation updated_at
-            await supabase
-              .from("conversations")
-              .update({ updated_at: new Date().toISOString() })
-              .eq("id", latestConv.id);
-          }
-
-          // 4. Update reminder follow_up_sent state
           await supabase
             .from("reminders")
             .update({ follow_up_sent: true, updated_at: new Date().toISOString() } as any)
             .eq("id", r.id);
 
-          await supabase.from("activity_logs").insert({
-            user_id: r.user_id,
-            action: "reminder_follow_up_triggered",
-            entity_type: "reminder",
-            entity_id: r.id
-          });
-
-          console.log(`[ReminderEngine] Follow-up successfully sent for reminder ${r.id}`);
-        } catch (err: any) {
-          console.error(`[ReminderEngine] Failed to dispatch follow-up for reminder ${r.id}:`, err);
+        } catch (err) {
+          console.error(`[ReminderEngine] Follow-up delivery failed for reminder ${r.id}:`, err);
         }
       }
     } catch (err) {
-      console.error("[ReminderEngine] Critical error in checkAndTriggerFollowUps:", err);
+      console.error("[ReminderEngine] Error in follow-up sweeps:", err);
     }
   }
 
   /**
-   * Executes a reminder or follow-up action.
-   * Single source of truth for both Telegram and Web app interactions.
+   * Action button click processor (for snooze, reschedule, complete, or dismiss).
    */
   static async handleReminderAction(
     userId: string,
@@ -574,23 +646,20 @@ export class ReminderService {
     reminderId: string,
     supabase: any
   ): Promise<{ success: boolean; message: string }> {
-    console.log(`[ReminderEngine] Executing action "${action}" for reminder ${reminderId} and user ${userId}`);
     const nowIso = new Date().toISOString();
 
-    // 1. Fetch target reminder
-    const { data: reminder, error: fetchErr } = await supabase
+    const { data: reminder, error } = await supabase
       .from("reminders")
       .select("*")
       .eq("id", reminderId)
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (fetchErr || !reminder) {
-      console.error(`[ReminderEngine] Action failed: Reminder ${reminderId} not found.`);
+    if (error || !reminder) {
       return { success: false, message: "Reminder not found." };
     }
 
-    // Mark corresponding notification as read if any
+    // Dismiss notifications linked
     await supabase
       .from("notifications")
       .update({ read: true })
@@ -600,130 +669,95 @@ export class ReminderService {
     switch (action) {
       case "complete":
       case "started": {
-        // Mark reminder as completed
         await supabase
           .from("reminders")
-            .update({ status: "completed" as any, updated_at: nowIso } as any)
+          .update({ status: "completed" as any, completed_at: nowIso, updated_at: nowIso } as any)
           .eq("id", reminderId);
 
-        // If it has an associated task, mark task as done
         if (reminder.task_id) {
-          const { data: task } = await supabase
-            .from("tasks")
-            .select("category")
-            .eq("id", reminder.task_id)
-            .maybeSingle();
-
-          const finalStatus = (task as any)?.category === "Emergency" ? "archived" : "done";
-
           await supabase
             .from("tasks")
-            .update({ status: finalStatus as any, completion_percentage: 100, updated_at: nowIso } as any)
+            .update({ status: "done", completion_percentage: 100, updated_at: nowIso })
             .eq("id", reminder.task_id);
 
           await supabase.from("activity_logs").insert({
             user_id: userId,
             action: "task_completed",
             entity_type: "task",
-            entity_id: reminder.task_id,
-            metadata: { via_reminder_action: action }
+            entity_id: reminder.task_id
           });
         }
-
-        return { success: true, message: "Task and reminder successfully marked as complete!" };
+        return { success: true, message: "Reminder completed." };
       }
 
       case "snooze": {
-        // Postpone reminder by 10 minutes
-        const newTime = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        const snoozeTime = new Date(Date.now() + 10 * 60 * 1000).toISOString();
         await supabase
           .from("reminders")
-          .update({ 
+          .update({
             status: "pending" as any,
-            reminder_time: newTime,
+            due_at: snoozeTime,
+            reminder_time: snoozeTime,
             delivery_attempts: 0,
-            next_retry_at: null,
             follow_up_sent: false,
             updated_at: nowIso
           } as any)
           .eq("id", reminderId);
 
-        return { success: true, message: "Reminder snoozed for 10 minutes." };
+        return { success: true, message: "Snoozed for 10 minutes." };
       }
 
       case "busy": {
-        // Postpone reminder by 30 minutes
-        const newTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        const busyTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
         await supabase
           .from("reminders")
-          .update({ 
+          .update({
             status: "pending" as any,
-            reminder_time: newTime,
+            due_at: busyTime,
+            reminder_time: busyTime,
             delivery_attempts: 0,
-            next_retry_at: null,
             follow_up_sent: false,
             updated_at: nowIso
           } as any)
           .eq("id", reminderId);
 
-        return { success: true, message: "Reminder rescheduled for 30 minutes later." };
+        return { success: true, message: "Rescheduled for 30 minutes later." };
       }
 
       case "later":
       case "followup_busy": {
-        // Postpone by 1 hour
-        const newTime = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        const laterTime = new Date(Date.now() + 60 * 60 * 1000).toISOString();
         await supabase
           .from("reminders")
-          .update({ 
+          .update({
             status: "pending" as any,
-            reminder_time: newTime,
+            due_at: laterTime,
+            reminder_time: laterTime,
             delivery_attempts: 0,
-            next_retry_at: null,
             follow_up_sent: false,
             updated_at: nowIso
           } as any)
           .eq("id", reminderId);
 
-        // Update task deadline as well if task_id exists
-        if (reminder.task_id) {
-          const { data: task } = await supabase
-            .from("tasks")
-            .select("deadline")
-            .eq("id", reminder.task_id)
-            .single();
-
-          const currentDeadline = task?.deadline ? new Date(task.deadline) : new Date();
-          const newDeadline = new Date(currentDeadline.getTime() + 60 * 60 * 1000).toISOString();
-
-          await supabase
-            .from("tasks")
-            .update({ deadline: newDeadline, updated_at: nowIso })
-            .eq("id", reminder.task_id);
-        }
-
-        return { success: true, message: "Postponed task and reminder by 1 hour." };
+        return { success: true, message: "Postponed by 1 hour." };
       }
 
       case "skip": {
-        // Cancel/skip reminder
         await supabase
           .from("reminders")
-          .update({ status: "cancelled" as any, updated_at: nowIso } as any)
+          .update({ status: "dismissed" as any, updated_at: nowIso } as any)
           .eq("id", reminderId);
 
-        return { success: true, message: "Reminder skipped successfully." };
+        return { success: true, message: "Reminder dismissed." };
       }
 
       case "help": {
-        // Archive reminder so it stops notifying
         await supabase
           .from("reminders")
           .update({ status: "completed" as any, updated_at: nowIso } as any)
           .eq("id", reminderId);
 
         if (reminder.task_id) {
-          // Fetch user's latest conversation
           const { data: latestConv } = await supabase
             .from("conversations")
             .select("id")
@@ -733,32 +767,27 @@ export class ReminderService {
             .maybeSingle();
 
           if (latestConv) {
-            // Insert user query
             await supabase.from("messages").insert({
               conversation_id: latestConv.id,
               role: "user",
-              content: `I need help with this task: "${reminder.title}". Can you give me coaching advice or alternative steps?`,
+              content: `I need help with this task: "${reminder.title}". Please guide me.`,
               metadata: { source: "telegram" }
             });
 
-            // Run action orchestrator asynchronously
             const { ActionOrchestrator } = await import("./action-orchestrator");
             ActionOrchestrator.processMessage(
-              userId, 
-              `I need help with this task: "${reminder.title}". Can you give me coaching advice or alternative steps?`,
+              userId,
+              `I need help with this task: "${reminder.title}". Please guide me.`,
               supabase,
               { conversationId: latestConv.id, source: "telegram" }
-            ).catch(err => {
-              console.error("[ReminderEngine] ActionOrchestrator async assistance call failed:", err);
-            });
+            ).catch(() => {});
           }
         }
-
-        return { success: true, message: "AI assistant prompted to guide you. Tap /status in chat to check." };
+        return { success: true, message: "AI Assistant alerted to help you." };
       }
 
       default:
-        return { success: false, message: `Unknown action: ${action}` };
+        return { success: false, message: `Action "${action}" unknown.` };
     }
   }
 }

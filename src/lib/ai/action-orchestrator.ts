@@ -27,9 +27,11 @@ export type OrchestratorActionPayload = {
   }>;
   extracted_reminders?: Array<{
     title: string;
-    reminder_time: string;
+    description?: string | null;
+    reminder_time?: string | null;
     reminder_type?: "specific_time" | "relative_time" | "recurring" | "deadline" | "smart";
     recurrence_pattern?: string | null;
+    priority?: "low" | "medium" | "high" | "critical" | null;
   }>;
   extracted_goals?: Array<{
     title: string;
@@ -274,13 +276,18 @@ export class ActionOrchestrator {
         lowerMessage.includes("in 1 hour");
 
       if (hasReminderIntent && (!parsedData.extracted_reminders || parsedData.extracted_reminders.length === 0)) {
-        console.warn("[ActionOrchestrator] Reminder intent detected, but Gemini failed to extract it.");
-        throw new Error("Reminder extraction failed (intent detected but none extracted).");
+        console.warn("[ActionOrchestrator] Reminder intent detected, but Gemini failed to extract it. Automatically creating fallback reminder.");
+        parsedData.extracted_reminders = [{
+          title: messageContent.replace(/remind me to/i, "").replace(/remind me/i, "").replace(/set a reminder to/i, "").replace(/set a reminder/i, "").trim() || "Task Reminder",
+          reminder_time: null,
+          reminder_type: "smart",
+          recurrence_pattern: null
+        }];
       }
 
       // 9. PIPELINE STEP: EXECUTE DATABASE TRANSACTION (Stage 3)
       console.log("[ActionOrchestrator] Executing database transactions...");
-      const execResult = await ActionOrchestrator.execute(userId, parsedData, supabase, messageContent);
+      const execResult = await ActionOrchestrator.execute(userId, parsedData, supabase, messageContent, options.source);
 
       // Propagate created IDs into syncLog for diagnostics
       syncLog.created_tasks = execResult.createdTasks;
@@ -374,7 +381,8 @@ export class ActionOrchestrator {
     userId: string,
     payload: OrchestratorActionPayload,
     supabase: SupabaseClient<Database>,
-    userMessageContent: string
+    userMessageContent: string,
+    source: "web" | "telegram" = "web"
   ): Promise<{ success: boolean; createdTasks: string[]; createdReminders: string[]; createdGoals: string[]; createdHabits: string[] }> {
     console.log(`[ActionOrchestrator] Starting transaction for user ${userId}...`);
 
@@ -592,10 +600,13 @@ export class ActionOrchestrator {
             userId,
             {
               title: rem.title,
+              description: rem.description || null,
               reminder_time: rem.reminder_time,
               reminder_type: rem.reminder_type || "specific_time",
               recurrence_pattern: rem.recurrence_pattern || null,
               task_id: associatedTaskId,
+              priority: rem.priority || null,
+              created_from: source === "telegram" ? "telegram" : "ai",
             },
             supabase
           );
