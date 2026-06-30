@@ -222,8 +222,11 @@ Evaluate the dialogue and respond.
       }
     }
 
-    // 3. Insert Milestones & Tasks
-    for (const ms of blueprint.milestones) {
+    // 3. Insert Milestones, Weekly Objectives, and Goal Tasks
+    const sortedMilestones = [...blueprint.milestones].sort((a, b) => a.target_day_offset - b.target_day_offset);
+    let prevOffset = 0;
+
+    for (const ms of sortedMilestones) {
       const msTargetDate = new Date();
       msTargetDate.setDate(msTargetDate.getDate() + ms.target_day_offset);
 
@@ -247,43 +250,68 @@ Evaluate the dialogue and respond.
         continue;
       }
 
-      // Insert Milestone Tasks
-      if (ms.tasks && ms.tasks.length > 0) {
-        const tasksPayload = ms.tasks.map((t) => ({
-          user_id: userId,
-          milestone_id: milestone.id,
-          title: t.title,
-          description: t.description,
-          priority: t.priority,
-          status: "todo",
-          estimated_duration: t.estimated_duration,
-          completion_percentage: 0,
-          priority_score: t.priority === "critical" ? 95 : t.priority === "high" ? 80 : t.priority === "medium" ? 60 : 30,
-          risk_level: "low",
-          completion_probability: 95,
-        }));
+      // Calculate weeks span for this milestone duration
+      const daysSpan = ms.target_day_offset - prevOffset;
+      const weeksCount = Math.max(1, Math.ceil(daysSpan / 7));
+      const weeklyObjIds: string[] = [];
 
-        for (const payload of tasksPayload) {
-          const { data: existing } = await supabase
-            .from("tasks")
-            .select("id")
-            .eq("user_id", userId)
-            .ilike("title", payload.title.trim())
-            .eq("status", "todo")
-            .limit(1);
+      for (let w = 0; w < weeksCount; w++) {
+        const wStartDate = new Date();
+        wStartDate.setDate(wStartDate.getDate() + prevOffset + w * 7);
 
-          if (existing && existing.length > 0) {
-            await supabase
-              .from("tasks")
-              .update(payload as any)
-              .eq("id", existing[0].id);
-          } else {
-            await supabase
-              .from("tasks")
-              .insert(payload as any);
+        const { data: wObj, error: wError } = await supabase
+          .from("weekly_objectives")
+          .insert({
+            milestone_id: milestone.id,
+            title: `Weekly Objective: Progress on ${ms.title} (Week ${w + 1})`,
+            description: `Actionable focus targets for week ${w + 1} of milestone: ${ms.title}`,
+            week_start: wStartDate.toISOString().split("T")[0],
+            status: "todo"
+          })
+          .select()
+          .single();
+
+        if (!wError && wObj) {
+          weeklyObjIds.push(wObj.id);
+        } else {
+          console.error("[GoalPlannerEngine] Error creating weekly objective:", wError?.message);
+        }
+      }
+
+      // Distribute tasks evenly across weekly objectives
+      if (ms.tasks && ms.tasks.length > 0 && weeklyObjIds.length > 0) {
+        for (let i = 0; i < ms.tasks.length; i++) {
+          const task = ms.tasks[i];
+          const objIndex = i % weeklyObjIds.length;
+          const objectiveId = weeklyObjIds[objIndex];
+
+          // Compute absolute day offset inside this objective's week range
+          const taskIndexInWeek = Math.floor(i / weeklyObjIds.length);
+          const taskDayOffset = prevOffset + objIndex * 7 + (taskIndexInWeek % 7);
+          const taskDeadline = new Date();
+          taskDeadline.setDate(taskDeadline.getDate() + taskDayOffset);
+          taskDeadline.setHours(17, 0, 0, 0); // 5 PM deadline
+
+          const { error: tError } = await supabase
+            .from("goal_tasks")
+            .insert({
+              user_id: userId,
+              objective_id: objectiveId,
+              title: task.title,
+              description: task.description,
+              status: "todo",
+              priority: task.priority || "medium",
+              deadline: taskDeadline.toISOString(),
+              estimated_duration: task.estimated_duration || 60
+            });
+
+          if (tError) {
+            console.error("[GoalPlannerEngine] Error inserting goal task:", tError.message);
           }
         }
       }
+
+      prevOffset = ms.target_day_offset;
     }
 
     return goal.id;

@@ -13,13 +13,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-interface Task {
+interface GoalTask {
   id: string;
   title: string;
   description: string;
   priority: string;
   status: string;
   deadline?: string;
+}
+
+interface WeeklyObjective {
+  id: string;
+  milestone_id: string;
+  title: string;
+  description: string;
+  week_start: string;
+  status: string;
+  goal_tasks?: GoalTask[];
 }
 
 interface Milestone {
@@ -31,7 +41,7 @@ interface Milestone {
   completion_percentage: number;
   reward?: string;
   risk?: string;
-  tasks?: Task[];
+  weekly_objectives?: WeeklyObjective[];
 }
 
 interface Goal {
@@ -204,8 +214,14 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
   if (!goal) return null;
 
   // Calculate high-level progress details
-  const totalTasks = goal.milestones?.reduce((acc, m) => acc + (m.tasks?.length ?? 0), 0) ?? 0;
-  const completedTasks = goal.milestones?.reduce((acc, m) => acc + (m.tasks?.filter((t) => t.status === "done").length ?? 0), 0) ?? 0;
+  const totalTasks = goal.milestones?.reduce(
+    (acc, m) => acc + (m.weekly_objectives?.reduce((sum, obj) => sum + (obj.goal_tasks?.length ?? 0), 0) ?? 0),
+    0
+  ) ?? 0;
+  const completedTasks = goal.milestones?.reduce(
+    (acc, m) => acc + (m.weekly_objectives?.reduce((sum, obj) => sum + (obj.goal_tasks?.filter((t) => t.status === "done").length ?? 0), 0) ?? 0),
+    0
+  ) ?? 0;
   const taskProgressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const healthRating = goal.health_score >= 85 ? "Excellent" : goal.health_score >= 65 ? "Recoverable" : goal.health_score >= 45 ? "Danger" : "Critical";
@@ -351,36 +367,50 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
                     )}
                   </div>
 
-                  {/* Tasks nested inside milestones */}
-                  {ms.tasks && ms.tasks.length > 0 && (
-                    <div className="space-y-2 pl-4">
-                      {ms.tasks.map((task) => {
-                        const taskDone = task.status === "done";
-                        return (
-                          <div 
-                            key={task.id} 
-                            className="flex items-start justify-between p-2.5 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors text-xs"
-                          >
-                            <div className="flex items-start gap-2">
-                              <CheckSquare className={cn("w-4 h-4 mt-0.5", taskDone ? "text-emerald-500" : "text-slate-500")} />
-                              <div>
-                                <p className={cn("font-bold text-slate-200", taskDone && "text-slate-500 line-through")}>
-                                  {task.title}
-                                </p>
-                                {task.description && (
-                                  <p className="text-[10px] text-slate-400 mt-0.5">{task.description}</p>
-                                )}
-                              </div>
-                            </div>
-
-                            {task.priority === "critical" && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 uppercase">
-                                Critical
-                              </span>
-                            )}
+                  {/* Weekly Objectives & Goal Tasks nested inside Milestones */}
+                  {ms.weekly_objectives && ms.weekly_objectives.length > 0 && (
+                    <div className="space-y-4 pl-4">
+                      {ms.weekly_objectives.map((obj) => (
+                        <div key={obj.id} className="space-y-2 p-3.5 rounded-xl border border-white/5 bg-white/5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-violet-400 uppercase">
+                              🗓️ Weekly Objective: {obj.title}
+                            </span>
+                            <span className="text-[8px] text-slate-400 font-bold uppercase">
+                              Week Start: {obj.week_start}
+                            </span>
                           </div>
-                        );
-                      })}
+
+                          {/* Goal tasks of this weekly objective */}
+                          {obj.goal_tasks && obj.goal_tasks.length > 0 ? (
+                            <div className="space-y-1.5 pl-2 mt-1.5">
+                              {obj.goal_tasks.map((task) => {
+                                const taskDone = task.status === "done";
+                                return (
+                                  <div 
+                                    key={task.id}
+                                    className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800/40 text-[11px]"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <CheckSquare className={cn("w-4 h-4 mt-0.5", taskDone ? "text-emerald-500" : "text-slate-500")} />
+                                      <span className={cn("font-medium text-slate-200", taskDone && "text-slate-500 line-through")}>
+                                        {task.title}
+                                      </span>
+                                    </div>
+                                    {task.priority === "critical" && (
+                                      <span className="text-[8px] font-extrabold px-1 bg-red-950 text-red-400 border border-red-900 rounded uppercase">
+                                        Crit
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-[9px] text-slate-500 italic pl-2">No tasks scheduled for this week.</p>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
 

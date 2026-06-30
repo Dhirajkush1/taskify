@@ -56,7 +56,9 @@ export class DashboardService {
 
     // Fetch all required tables in parallel
     const [
-      tasksRes,
+      personalTasksRes,
+      projectTasksRes,
+      goalTasksRes,
       planRes,
       scoreRes,
       historyRes,
@@ -64,13 +66,24 @@ export class DashboardService {
       activityRes,
       rescueRes
     ] = await Promise.all([
-      // 1. All active (non-archived) tasks
+      // 1. Personal / General tasks
       supabase
         .from("tasks")
         .select("*")
         .eq("user_id", userId)
-        .neq("status", "archived")
-        .order("deadline", { ascending: true, nullsFirst: false }),
+        .neq("status", "archived"),
+      // 1b. Project tasks
+      supabase
+        .from("project_tasks")
+        .select("*")
+        .eq("user_id", userId)
+        .neq("status", "done"),
+      // 1c. Goal tasks
+      supabase
+        .from("goal_tasks")
+        .select("*")
+        .eq("user_id", userId)
+        .neq("status", "done"),
       // 2. Today's execution plan
       supabase
         .from("execution_plans")
@@ -116,7 +129,16 @@ export class DashboardService {
         .maybeSingle()
     ]);
 
-    const tasks: Task[] = tasksRes.data ?? [];
+    const tasks: Task[] = [
+      ...(personalTasksRes.data || []),
+      ...(projectTasksRes.data || []).map((t: any) => ({ ...t, deadline: t.due_date })),
+      ...(goalTasksRes.data || [])
+    ].sort((a, b) => {
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    }) as any;
+
     const planData = planRes.data?.plan_data ?? null;
     const scoreRow = scoreRes.data ?? null;
     const history = historyRes.data ?? [];

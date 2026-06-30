@@ -29,6 +29,7 @@ interface CalendarEvent {
   guests?: Array<{ email: string; responseStatus: string }>;
   task_id?: string;
   ai_analysis?: any;
+  is_linked?: boolean;
 }
 
 type ViewMode = "month" | "week" | "day" | "agenda" | "timeline";
@@ -148,10 +149,11 @@ export default function CalendarPage() {
         toast.success("Google Calendar sync complete!");
         loadEvents();
       } else {
-        toast.error("Sync failed.");
+        toast.error("Failed to sync calendar.");
       }
-    } catch {
-      toast.error("Network error triggering sync.");
+    } catch (err) {
+      console.error(err);
+      toast.error("An error occurred during sync.");
     } finally {
       setSyncing(false);
     }
@@ -261,9 +263,9 @@ export default function CalendarPage() {
       case "meeting_prep":
         return "bg-cyan-500/10 border-cyan-500/25 text-cyan-300";
       case "task_block":
-        return "bg-red-500/10 border-red-500/30 text-red-300";
+        return "bg-purple-500/10 border-purple-500/30 text-purple-300 shadow-sm shadow-purple-500/5";
       default: // external GCal commitments
-        return "bg-neutral-900/90 border-neutral-800 text-neutral-200";
+        return "bg-blue-500/10 border-blue-500/30 text-blue-300 shadow-sm shadow-blue-500/5";
     }
   };
 
@@ -433,7 +435,14 @@ export default function CalendarPage() {
                             >
                               <div>
                                 <div className="flex items-center justify-between">
-                                  <h4 className="font-bold tracking-tight text-neutral-100">{event.title}</h4>
+                                  <h4 className="font-bold tracking-tight text-neutral-100 flex items-center gap-1">
+                                    {event.is_linked && (
+                                      <svg className="w-3.5 h-3.5 text-blue-400 fill-current inline-block shrink-0" viewBox="0 0 24 24">
+                                        <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.187 4.113-3.468 0-6.277-2.81-6.277-6.277s2.809-6.277 6.277-6.277c1.602 0 3.06.6 4.185 1.583l3.076-3.076C19.262 1.95 15.96 0 11.94 0 5.345 0 0 5.345 0 11.94s5.345 11.94 11.94 11.94c7.018 0 12.06-4.935 12.06-12.06 0-.742-.06-1.5-.2-2.182H12.24z"/>
+                                      </svg>
+                                    )}
+                                    <span>{event.title}</span>
+                                  </h4>
                                   
                                   {event.task_id && event.status !== "completed" && (
                                     <button
@@ -521,7 +530,14 @@ export default function CalendarPage() {
                                 className={`rounded-lg p-2 border text-[10px] flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all select-none ${getEventStyle(event)}`}
                               >
                                 <div>
-                                  <h4 className="font-bold leading-tight truncate text-neutral-200">{event.title}</h4>
+                                  <h4 className="font-bold leading-tight truncate text-neutral-200 flex items-center gap-1">
+                                    {event.is_linked && (
+                                      <svg className="w-3.5 h-3.5 text-blue-400 fill-current inline-block shrink-0" viewBox="0 0 24 24">
+                                        <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.187 4.113-3.468 0-6.277-2.81-6.277-6.277s2.809-6.277 6.277-6.277c1.602 0 3.06.6 4.185 1.583l3.076-3.076C19.262 1.95 15.96 0 11.94 0 5.345 0 0 5.345 0 11.94s5.345 11.94 11.94 11.94c7.018 0 12.06-4.935 12.06-12.06 0-.742-.06-1.5-.2-2.182H12.24z"/>
+                                      </svg>
+                                    )}
+                                    <span>{event.title}</span>
+                                  </h4>
                                   <span className="text-[8px] opacity-60 block mt-0.5">
                                     {displayTime(event.start_time)}
                                   </span>
@@ -586,11 +602,19 @@ export default function CalendarPage() {
                               key={event.id}
                               className={`text-[8px] px-1 py-0.5 rounded border truncate ${
                                 event.event_type === "focus_block" ? "bg-violet-500/10 border-violet-500/20 text-violet-300" :
-                                event.event_type === "external" ? "bg-neutral-800 border-neutral-700 text-neutral-200" :
+                                event.event_type === "external" ? "bg-blue-500/10 border-blue-500/20 text-blue-300" :
+                                event.event_type === "task_block" ? "bg-purple-500/10 border-purple-500/20 text-purple-300" :
                                 "bg-neutral-950 border-neutral-900 text-neutral-400"
                               }`}
                             >
-                              {event.title}
+                              <span className="flex items-center gap-0.5 truncate">
+                                {event.is_linked && (
+                                  <svg className="w-2 h-2 text-blue-400 fill-current inline-block shrink-0" viewBox="0 0 24 24">
+                                    <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.187 4.113-3.468 0-6.277-2.81-6.277-6.277s2.809-6.277 6.277-6.277c1.602 0 3.06.6 4.185 1.583l3.076-3.076C19.262 1.95 15.96 0 11.94 0 5.345 0 0 5.345 0 11.94s5.345 11.94 11.94 11.94c7.018 0 12.06-4.935 12.06-12.06 0-.742-.06-1.5-.2-2.182H12.24z"/>
+                                  </svg>
+                                )}
+                                <span className="truncate">{event.title}</span>
+                              </span>
                             </div>
                           ))}
                           {dayEvents.length > 3 && (
@@ -650,7 +674,14 @@ export default function CalendarPage() {
                             >
                               <div>
                                 <div className="flex items-start justify-between gap-3">
-                                  <span className="font-bold text-xs text-neutral-100">{e.title}</span>
+                                  <span className="font-bold text-xs text-neutral-100 flex items-center gap-1">
+                                    {e.is_linked && (
+                                      <svg className="w-3.5 h-3.5 text-blue-400 fill-current inline-block shrink-0" viewBox="0 0 24 24">
+                                        <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.187 4.113-3.468 0-6.277-2.81-6.277-6.277s2.809-6.277 6.277-6.277c1.602 0 3.06.6 4.185 1.583l3.076-3.076C19.262 1.95 15.96 0 11.94 0 5.345 0 0 5.345 0 11.94s5.345 11.94 11.94 11.94c7.018 0 12.06-4.935 12.06-12.06 0-.742-.06-1.5-.2-2.182H12.24z"/>
+                                      </svg>
+                                    )}
+                                    <span>{e.title}</span>
+                                  </span>
                                   {e.event_type !== "external" && (
                                     <span className="text-[7px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest bg-violet-500/10 text-violet-400">
                                       {e.event_type.replace("_", " ")}
@@ -730,7 +761,14 @@ export default function CalendarPage() {
                           }}
                           title={`${event.title} (${displayTime(event.start_time)} - ${displayTime(event.end_time)})`}
                         >
-                          <span className="truncate">{event.title}</span>
+                          <span className="truncate flex items-center gap-1">
+                            {event.is_linked && (
+                              <svg className="w-3.5 h-3.5 text-blue-400 fill-current inline-block shrink-0" viewBox="0 0 24 24">
+                                <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.113-5.187 4.113-3.468 0-6.277-2.81-6.277-6.277s2.809-6.277 6.277-6.277c1.602 0 3.06.6 4.185 1.583l3.076-3.076C19.262 1.95 15.96 0 11.94 0 5.345 0 0 5.345 0 11.94s5.345 11.94 11.94 11.94c7.018 0 12.06-4.935 12.06-12.06 0-.742-.06-1.5-.2-2.182H12.24z"/>
+                              </svg>
+                            )}
+                            <span className="truncate">{event.title}</span>
+                          </span>
                         </div>
                       );
                     })}

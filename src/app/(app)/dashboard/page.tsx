@@ -25,15 +25,34 @@ export default async function DashboardPage() {
   // Retrieve the single, unified database dashboard state
   const dashboardData = await DashboardService.getDashboardData(user.id);
 
-  // Fetch all tasks to pass to the heatmap and sub-widgets (requires full array)
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("user_id", user.id)
-    .neq("status", "archived")
-    .order("deadline", { ascending: true, nullsFirst: false });
+  // Fetch all tasks from decoupled tables to pass to the heatmap and sub-widgets
+  const [tasksRes, projectTasksRes, goalTasksRes] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", user.id)
+      .neq("status", "archived"),
+    supabase
+      .from("project_tasks")
+      .select("*")
+      .eq("user_id", user.id)
+      .neq("status", "done"),
+    supabase
+      .from("goal_tasks")
+      .select("*")
+      .eq("user_id", user.id)
+      .neq("status", "done")
+  ]);
 
-  const taskList = tasks ?? [];
+  const taskList = [
+    ...(tasksRes.data || []).map((t: any) => ({ ...t, type: "personal" })),
+    ...(projectTasksRes.data || []).map((t: any) => ({ ...t, deadline: t.due_date, type: "project" })),
+    ...(goalTasksRes.data || []).map((t: any) => ({ ...t, type: "goal" }))
+  ].sort((a, b) => {
+    if (!a.deadline) return 1;
+    if (!b.deadline) return -1;
+    return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+  });
 
   const { data: profile } = await supabase
     .from("users")

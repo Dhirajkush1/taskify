@@ -80,6 +80,16 @@ export async function POST(request: NextRequest) {
     entity_id: data.id,
   });
 
+  // Push to Google Calendar (if has date/deadline)
+  try {
+    const { CalendarSyncService } = await import("@/lib/google-calendar/sync-service");
+    CalendarSyncService.pushTaskToGoogle(user.id, data.id, supabase).catch(err => {
+      console.error(`[TasksAPI] Google Calendar sync failed for task ${data.id}:`, err);
+    });
+  } catch (err) {
+    console.error("[TasksAPI] Failed to load CalendarSyncService for google push:", err);
+  }
+
   // Trigger AI Focus Time Blocking
   try {
     const { CalendarAiService } = await import("@/lib/ai/calendar-ai-service");

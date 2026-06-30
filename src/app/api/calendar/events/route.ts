@@ -37,6 +37,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Fetch calendar event links to identify linked tasks
+    const { data: links } = await supabase
+      .from("calendar_event_links")
+      .select("task_id")
+      .eq("user_id", user.id)
+      .not("task_id", "is", null);
+
+    const linkedTaskIds = new Set((links || []).map((l: any) => l.task_id));
+
+    const mappedEvents = (events || []).map((e: any) => ({
+      ...e,
+      is_linked: !!e.task_id
+    }));
+
     // Optionally overlay tasks as deadline milestones on the calendar
     const { data: tasks } = await supabase
       .from("tasks")
@@ -60,10 +74,11 @@ export async function GET(request: NextRequest) {
         task_id: t.id,
         status: t.status === "done" ? "completed" : "confirmed",
         visibility: "default",
+        is_linked: linkedTaskIds.has(t.id),
       };
     });
 
-    const combinedEvents = [...(events || []), ...mappedTasks];
+    const combinedEvents = [...mappedEvents, ...mappedTasks];
 
     return NextResponse.json({ data: combinedEvents });
   } catch (err: any) {

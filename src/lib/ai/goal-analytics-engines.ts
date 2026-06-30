@@ -18,11 +18,19 @@ export class GoalRiskEngine {
 
     let tasks: any[] = [];
     if (milestoneIds.length > 0) {
-      const { data: milestoneTasks } = await supabase
-        .from("tasks")
-        .select("*")
+      const { data: objectives } = await supabase
+        .from("weekly_objectives")
+        .select("id")
         .in("milestone_id", milestoneIds);
-      tasks = milestoneTasks || [];
+      const objectiveIds = (objectives || []).map((o: any) => o.id);
+
+      if (objectiveIds.length > 0) {
+        const { data: goalTasks } = await supabase
+          .from("goal_tasks")
+          .select("*")
+          .in("objective_id", objectiveIds);
+        tasks = goalTasks || [];
+      }
     }
 
     // 2. Fetch habits
@@ -117,7 +125,10 @@ export class GoalForecastEngine {
     const { data: goal } = await supabase.from("goals").select("*").eq("id", goalId).single();
     if (!goal) throw new Error("Goal not found");
 
-    const { data: milestones } = await supabase.from("milestones").select("*, tasks(*)").eq("goal_id", goalId);
+    const { data: milestones } = await supabase
+      .from("milestones")
+      .select("*, weekly_objectives(*, goal_tasks(*))")
+      .eq("goal_id", goalId);
     const msList = milestones || [];
 
     const systemPrompt = `You are Clutch AI's Goal Forecasting Engine.
