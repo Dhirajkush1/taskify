@@ -22,6 +22,34 @@ export default function SettingsPage() {
   const [googleAccount, setGoogleAccount] = useState<any>(null);
   const [googleCalendars, setGoogleCalendars] = useState<any[]>([]);
   const [syncingGoogle, setSyncingGoogle] = useState(false);
+  const [syncSettings, setSyncSettings] = useState<any>({
+    import_window: 90,
+    import_historical: false,
+    sync_recurring: false,
+    meeting_detection: true,
+    birthday_detection: false,
+    holiday_detection: false,
+    task_creation: "manual_suggest",
+    reminder_creation: true,
+    auto_ai_planning: false
+  });
+
+  const updateSyncSetting = async (key: string, value: any) => {
+    const updated = { ...syncSettings, [key]: value };
+    setSyncSettings(updated);
+    
+    try {
+      const res = await fetch("/api/calendar/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: updated })
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Sync settings saved.");
+    } catch (err) {
+      toast.error("Failed to save calendar settings.");
+    }
+  };
 
   // Telegram Integration State
   const [telegramStatus, setTelegramStatus] = useState<{
@@ -122,6 +150,15 @@ export default function SettingsPage() {
             .eq("user_id", user.id)
             .order("primary", { ascending: false });
           setGoogleCalendars(gCals || []);
+
+          // Load Google Calendar Sync Settings
+          const settingsRes = await fetch("/api/calendar/settings");
+          if (settingsRes.ok) {
+            const settingsData = await settingsRes.json();
+            if (settingsData.settings) {
+              setSyncSettings(settingsData.settings);
+            }
+          }
         }
 
         // Subscribe to real-time changes on Google Accounts to auto-detect login completion!
@@ -667,6 +704,116 @@ export default function SettingsPage() {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Sync Boundaries */}
+            <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-violet-400">Import Boundaries</h3>
+              
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Import Future Window</span>
+                  <p className="text-[10px] text-neutral-500">Scan events up to this date range</p>
+                </div>
+                <select
+                  value={syncSettings.import_window}
+                  onChange={(e) => updateSyncSetting("import_window", Number(e.target.value))}
+                  className="bg-neutral-950 text-xs px-2 py-1 rounded border border-neutral-800 text-neutral-200 outline-none"
+                >
+                  <option value={30}>Next 30 Days</option>
+                  <option value={90}>Next 90 Days</option>
+                  <option value={365}>Next Year</option>
+                  <option value={-1}>Everything</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Import Historical Events</span>
+                  <p className="text-[10px] text-neutral-500">Fetch events from the past 7 days</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("import_historical", !syncSettings.import_historical)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.import_historical ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.import_historical ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Sync Recurring Events</span>
+                  <p className="text-[10px] text-neutral-500">Scan repeating standups and meetings</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("sync_recurring", !syncSettings.sync_recurring)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.sync_recurring ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.sync_recurring ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* AI Settings */}
+            <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-violet-400">AI Task & Planning Config</h3>
+              
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Task Creation Style</span>
+                  <p className="text-[10px] text-neutral-500">Decide how actionable events are mapped</p>
+                </div>
+                <select
+                  value={syncSettings.task_creation}
+                  onChange={(e) => updateSyncSetting("task_creation", e.target.value)}
+                  className="bg-neutral-950 text-xs px-2 py-1 rounded border border-neutral-800 text-neutral-200 outline-none"
+                >
+                  <option value="manual_suggest">AI Suggestions (Confirm first)</option>
+                  <option value="auto">Auto-Create (Run autonomously)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Auto AI Planning</span>
+                  <p className="text-[10px] text-neutral-500">Book Deep Work focus, buffer, and prep blocks automatically</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("auto_ai_planning", !syncSettings.auto_ai_planning)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.auto_ai_planning ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.auto_ai_planning ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-200">Enable Reminders</span>
+                  <p className="text-[10px] text-neutral-500">Receive alerts before important calendar events</p>
+                </div>
+                <button
+                  onClick={() => updateSyncSetting("reminder_creation", !syncSettings.reminder_creation)}
+                  className="w-8 h-5 rounded-full relative cursor-pointer transition-all shrink-0"
+                  style={{ background: syncSettings.reminder_creation ? "var(--primary)" : "var(--surface-overlay)" }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: syncSettings.reminder_creation ? "calc(100% - 18px)" : "2px" }}
+                  />
+                </button>
               </div>
             </div>
 
